@@ -167,6 +167,13 @@ const App: React.FC = () => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
 
+      // Transform Mode Shortcuts (T, R, S)
+      if (!ctrlKey && !e.altKey) {
+        if (e.key.toLowerCase() === 't') setTransformMode('translate');
+        if (e.key.toLowerCase() === 'r') setTransformMode('rotate');
+        if (e.key.toLowerCase() === 's') setTransformMode('scale');
+      }
+
       // Undo/Redo Shortcuts
       if (ctrlKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -273,21 +280,21 @@ const App: React.FC = () => {
             <button 
               onClick={() => setTransformMode('translate')}
               className={`p-2 rounded transition-all ${transformMode === 'translate' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}
-              title="Translate (W)"
+              title="Translate (T)"
             >
               <Move size={16} />
             </button>
             <button 
               onClick={() => setTransformMode('rotate')}
               className={`p-2 rounded transition-all ${transformMode === 'rotate' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}
-              title="Rotate (E)"
+              title="Rotate (R)"
             >
               <RotateCw size={16} />
             </button>
             <button 
               onClick={() => setTransformMode('scale')}
               className={`p-2 rounded transition-all ${transformMode === 'scale' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}
-              title="Scale (R)"
+              title="Scale (S)"
             >
               <Maximize size={16} />
             </button>
@@ -382,7 +389,7 @@ const App: React.FC = () => {
           )}
         </div>
         <div className="flex gap-4">
-          <span className="text-[9px] text-gray-600 font-mono tracking-widest uppercase">CTRL+Z to Undo / CTRL+Y to Redo</span>
+          <span className="text-[9px] text-gray-600 font-mono tracking-widest uppercase">T/R/S: Transform | CTRL+Z: Undo</span>
           <span className="text-[9px] text-blue-500 font-mono font-bold uppercase tracking-widest">Neural Pipeline</span>
         </div>
       </footer>
