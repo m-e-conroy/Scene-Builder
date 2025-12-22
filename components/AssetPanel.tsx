@@ -70,6 +70,10 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   
+  // Renaming state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNameValue, setEditNameValue] = useState('');
+
   // AI Backdrop Generation
   const [genPrompt, setGenPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -163,6 +167,22 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
 
   const updateBg = (updates: Partial<BackgroundSettings>) => {
     setBgSettings(prev => ({ ...prev, ...updates }));
+  };
+
+  const startEditing = (obj: SceneObject) => {
+    setEditingId(obj.id);
+    setEditNameValue(obj.name);
+  };
+
+  const commitEditing = () => {
+    if (editingId && editNameValue.trim()) {
+      onUpdate(editingId, { name: editNameValue.trim() });
+    }
+    setEditingId(null);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
   };
 
   return (
@@ -427,8 +447,31 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
               ) : (
                 objects.map((obj) => (
                   <div key={obj.id} onClick={() => onSelect(obj.id)} className={`flex items-center justify-between p-2 rounded-md border cursor-pointer group ${selectedId === obj.id ? 'bg-[#1a1a1a] border-blue-500/50' : 'bg-[#0a0a0a] border-[#222]'}`}>
-                    <span className="text-[11px] text-gray-400 truncate flex-1 px-1">{obj.name}</span>
-                    <button onClick={(e) => { e.stopPropagation(); onRemove(obj.id); }} className="p-1 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12} /></button>
+                    {editingId === obj.id ? (
+                      <input 
+                        autoFocus
+                        className="text-[11px] bg-black text-white border border-blue-500 rounded px-1 flex-1 min-w-0 mr-2 outline-none"
+                        value={editNameValue}
+                        onChange={(e) => setEditNameValue(e.target.value)}
+                        onBlur={commitEditing}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitEditing();
+                          if (e.key === 'Escape') cancelEditing();
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span className="text-[11px] text-gray-400 truncate flex-1 px-1">{obj.name}</span>
+                    )}
+                    
+                    <div className="flex items-center gap-1">
+                      {editingId === obj.id ? (
+                        <button onClick={(e) => { e.stopPropagation(); commitEditing(); }} className="p-1 text-blue-500 hover:text-blue-400"><Check size={12} /></button>
+                      ) : (
+                        <button onClick={(e) => { e.stopPropagation(); startEditing(obj); }} className="p-1 text-gray-600 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"><Edit2 size={12} /></button>
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); onRemove(obj.id); }} className="p-1 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12} /></button>
+                    </div>
                   </div>
                 ))
               )}
