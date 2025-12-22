@@ -18,6 +18,7 @@ export interface SceneObject {
   type: 'local' | 'cloud' | 'primitive';
   primitiveType?: PrimitiveType;
   groupId?: string; // Reference to a SceneGroup
+  referenceImageUrl?: string; // AI Reference Image
 }
 
 export interface CloudAsset {

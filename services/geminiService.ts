@@ -26,12 +26,18 @@ export const processSceneToImage = async (
 ): Promise<string | null> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
+  // Collect objects that have reference images
+  const objectsWithRefs = objects.filter(o => o.referenceImageUrl);
+
   // Generate a textual description of the scene semantics
   const sceneSemantics = groups.map(group => {
     const children = objects.filter(o => o.groupId === group.id).map(o => o.name);
     return `- Group "${group.name}": contains ${children.join(', ') || 'nothing'}`;
   }).join('\n') + '\n' + 
-  objects.filter(o => !o.groupId).map(o => `- Ungrouped object: "${o.name}"`).join('\n');
+  objects.filter(o => !o.groupId).map(o => {
+    const refSuffix = o.referenceImageUrl ? " (HAS ATTACHED REFERENCE IMAGE)" : "";
+    return `- Ungrouped object: "${o.name}"${refSuffix}`;
+  }).join('\n');
 
   const getFidelityInstruction = (s: number) => {
     const intensity = (1 - s).toFixed(2);
@@ -40,20 +46,18 @@ export const processSceneToImage = async (
         [SPATIAL CONSTRAINT: ABSOLUTE]
         - Fidelity Intensity: ${intensity}.
         - You are strictly prohibited from altering the silhouette or volume.
-        - Every pixel of geometry is a fixed physical structure.
       `;
     } else if (s > 0.75) {
       return `
         [SPATIAL CONSTRAINT: FLUID]
         - Fidelity Intensity: ${intensity}.
         - Use the source image as a depth guide.
-        - Add intricate decorative geometry that complements the core shapes.
       `;
     } else {
       return `
         [SPATIAL CONSTRAINT: BALANCED]
         - Fidelity Intensity: ${intensity}.
-        - Preserve primary forms but enhance surface details (beveling, weathering).
+        - Preserve primary forms but enhance surface details.
       `;
     }
   };
@@ -65,19 +69,17 @@ export const processSceneToImage = async (
     Transform the attached 3D block-out into a professional CGI masterpiece. 
     
     [SCENE HIERARCHY & SEMANTICS]
-    The user has specified the following intent for the objects in the scene:
     ${sceneSemantics}
     
-    [INSTRUCTIONS: SEMANTIC MAPPING]
-    - Match the 3D shapes in the image to the names provided above.
-    - If a box is named "Server Tower", render it with metallic panels and cooling vents.
-    - If a cylinder is named "Glowing Pillar", render it with emissive materials and light-bloom.
-    - Respect the relationships described in groups.
+    [INSTRUCTIONS: REFERENCE IMAGES]
+    I have provided ${objectsWithRefs.length} additional reference images.
+    Each reference image corresponds to a specific object in the scene.
+    ${objectsWithRefs.map((obj, idx) => `- Reference Image ${idx + 2} (Part ${idx + 2}) is for the object named: "${obj.name}". Use its textures, colors, and materials exactly for that specific object.`).join('\n')}
 
-    [GEOMETRY & DEPTH ANALYSIS]
-    1. ANALYZE PERSPECTIVE: Identify vanishing points from the grid lines.
-    2. DEPTH OCCLUSION: Respect object layering. foreground crisp, background hazy.
-    3. CONTACT GEOMETRY: Generate realistic contact shadows (Ambient Occlusion).
+    [INSTRUCTIONS: SEMANTIC MAPPING]
+    - Match the 3D shapes in the primary image to the names provided above.
+    - If a box is named "Server Tower", render it with metallic panels.
+    - Respect the relationships described in groups.
 
     [VISUAL STYLE & ENVIRONMENT]
     Prompt: "${prompt}"
@@ -87,26 +89,39 @@ export const processSceneToImage = async (
 
     [TECHNICAL SPECIFICATIONS]
     - Realistic Global Illumination (GI) and HDR lighting.
-    - PBR surfaces: realistic roughness, metalness, and subsurface scattering.
-    - Cinematic post-processing: Subtle chromatic aberration, film grain, and 8k sharpness.
+    - PBR surfaces: realistic roughness, metalness.
+    - Cinematic post-processing.
   `;
+
+  // Construct parts: Primary Scene + Reference Images + Prompt
+  const parts: any[] = [
+    {
+      inlineData: {
+        mimeType: 'image/png',
+        data: base64Image.split(',')[1] 
+      }
+    }
+  ];
+
+  // Add all per-object references as parts
+  objectsWithRefs.forEach(obj => {
+    if (obj.referenceImageUrl) {
+      parts.push({
+        inlineData: {
+          mimeType: 'image/png',
+          data: obj.referenceImageUrl.split(',')[1]
+        }
+      });
+    }
+  });
+
+  // Add the text prompt part last
+  parts.push({ text: masterPrompt });
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: 'image/png',
-              data: base64Image.split(',')[1] 
-            }
-          },
-          {
-            text: masterPrompt
-          }
-        ]
-      },
+      contents: { parts },
       config: {
         imageConfig: {
           aspectRatio: "1:1"
@@ -138,16 +153,6 @@ export const search3DModels = async (query: string): Promise<CloudAsset[]> => {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Search for high-quality, public domain .glb 3D models for: "${query}". 
-      
-      CRITICAL REJECTION RULES (DEAD PATHS - DO NOT USE):
-      1. NEVER use "pmndrs/market-assets" paths.
-      2. NEVER use "aframevr/aframe" showcase paths.
-      3. NEVER return links from "vazxmixjsiawhamofees.supabase.co" or "cdn.wellpi.com".
-      
-      PREFERRED STABLE SOURCES:
-      1. Khronos Group glTF Sample Models.
-      2. Google Model Viewer Shared Assets.
-      3. Three.js Examples Assets.
       
       Return a JSON array of objects with "name", "downloadUrl", and "thumbnail".`,
       config: {
