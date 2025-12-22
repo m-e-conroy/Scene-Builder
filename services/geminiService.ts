@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { CloudAsset } from "../types";
+import { CloudAsset, SceneObject, SceneGroup } from "../types";
 
 // Utility to ensure GitHub links are raw and other common URL fixes
 export const sanitizeModelUrl = (url: string): string => {
@@ -20,33 +20,40 @@ export const sanitizeModelUrl = (url: string): string => {
 export const processSceneToImage = async (
   base64Image: string,
   prompt: string,
-  strength: number
+  strength: number,
+  objects: SceneObject[],
+  groups: SceneGroup[]
 ): Promise<string | null> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
+  // Generate a textual description of the scene semantics
+  const sceneSemantics = groups.map(group => {
+    const children = objects.filter(o => o.groupId === group.id).map(o => o.name);
+    return `- Group "${group.name}": contains ${children.join(', ') || 'nothing'}`;
+  }).join('\n') + '\n' + 
+  objects.filter(o => !o.groupId).map(o => `- Ungrouped object: "${o.name}"`).join('\n');
+
   const getFidelityInstruction = (s: number) => {
     const intensity = (1 - s).toFixed(2);
     if (s < 0.35) {
       return `
         [SPATIAL CONSTRAINT: ABSOLUTE]
         - Fidelity Intensity: ${intensity}.
-        - You are strictly prohibited from altering the silhouette, volume, or perspective of the objects.
-        - Every pixel of the geometry in the source image is a fixed physical structure.
-        - Focus exclusively on realistic light transport, PBR materials, and environmental integration.
+        - You are strictly prohibited from altering the silhouette or volume.
+        - Every pixel of geometry is a fixed physical structure.
       `;
     } else if (s > 0.75) {
       return `
         [SPATIAL CONSTRAINT: FLUID]
         - Fidelity Intensity: ${intensity}.
-        - Use the source image as a composition and depth guide (Depth-Mapping).
-        - Maintain the general volume but feel free to add intricate decorative geometry, secondary objects, and atmospheric density that complements the core shapes.
+        - Use the source image as a depth guide.
+        - Add intricate decorative geometry that complements the core shapes.
       `;
     } else {
       return `
         [SPATIAL CONSTRAINT: BALANCED]
         - Fidelity Intensity: ${intensity}.
-        - Preserve the primary geometric forms and their 3D coordinate relationships.
-        - You may enhance surface details (beveling, weathering, paneling) while keeping the base mesh proportions 1:1.
+        - Preserve primary forms but enhance surface details (beveling, weathering).
       `;
     }
   };
@@ -57,11 +64,20 @@ export const processSceneToImage = async (
     [TASK: NEURAL RENDER ENGINE]
     Transform the attached 3D block-out into a professional CGI masterpiece. 
     
+    [SCENE HIERARCHY & SEMANTICS]
+    The user has specified the following intent for the objects in the scene:
+    ${sceneSemantics}
+    
+    [INSTRUCTIONS: SEMANTIC MAPPING]
+    - Match the 3D shapes in the image to the names provided above.
+    - If a box is named "Server Tower", render it with metallic panels and cooling vents.
+    - If a cylinder is named "Glowing Pillar", render it with emissive materials and light-bloom.
+    - Respect the relationships described in groups.
+
     [GEOMETRY & DEPTH ANALYSIS]
-    1. ANALYZE PERSPECTIVE: Identify the horizon line and vanishing points from the grid lines. Ensure all rendered lines align with this perspective.
-    2. DEPTH OCCLUSION: Respect object layering. Objects in the foreground must have crisp edges; objects in the background should follow atmospheric perspective (subtle haze/desaturation).
-    3. CONTACT GEOMETRY: Pay extreme attention to the points where objects intersect the floor. Generate realistic contact shadows (Ambient Occlusion) to ground the scene.
-    4. VOLUME PRESERVATION: Treat every shape as a physical 3D mass. Avoid flattening or warping the geometry.
+    1. ANALYZE PERSPECTIVE: Identify vanishing points from the grid lines.
+    2. DEPTH OCCLUSION: Respect object layering. foreground crisp, background hazy.
+    3. CONTACT GEOMETRY: Generate realistic contact shadows (Ambient Occlusion).
 
     [VISUAL STYLE & ENVIRONMENT]
     Prompt: "${prompt}"
@@ -70,10 +86,9 @@ export const processSceneToImage = async (
     ${structuralInstruction}
 
     [TECHNICAL SPECIFICATIONS]
-    - Realistic Global Illumination (GI) and High Dynamic Range (HDR) lighting.
-    - Physically Based Rendering (PBR) surfaces: simulate realistic roughness, metalness, and subsurface scattering.
+    - Realistic Global Illumination (GI) and HDR lighting.
+    - PBR surfaces: realistic roughness, metalness, and subsurface scattering.
     - Cinematic post-processing: Subtle chromatic aberration, film grain, and 8k sharpness.
-    - Tone Mapping: Professional color grade suitable for a high-budget film or architectural visualization.
   `;
 
   try {
@@ -125,18 +140,16 @@ export const search3DModels = async (query: string): Promise<CloudAsset[]> => {
       contents: `Search for high-quality, public domain .glb 3D models for: "${query}". 
       
       CRITICAL REJECTION RULES (DEAD PATHS - DO NOT USE):
-      1. NEVER use "pmndrs/market-assets" paths (e.g. tree-spruce, tree-lime). They are 404.
-      2. NEVER use "aframevr/aframe" showcase paths (e.g. anime-UI/assets/bench.glb). They are 404.
+      1. NEVER use "pmndrs/market-assets" paths.
+      2. NEVER use "aframevr/aframe" showcase paths.
       3. NEVER return links from "vazxmixjsiawhamofees.supabase.co" or "cdn.wellpi.com".
-      4. NEVER guess GitHub file names. If you haven't seen the exact path in search results, don't return it.
       
       PREFERRED STABLE SOURCES:
-      1. Khronos Group glTF Sample Models (Very Reliable): "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/[ModelName]/glTF-Binary/[ModelName].glb"
-      2. Google Model Viewer Shared Assets: "https://modelviewer.dev/shared-assets/models/[ModelName].glb"
-      3. Three.js Examples Assets: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/..."
+      1. Khronos Group glTF Sample Models.
+      2. Google Model Viewer Shared Assets.
+      3. Three.js Examples Assets.
       
-      Return a JSON array of objects with "name", "downloadUrl", and "thumbnail". 
-      Ensure "thumbnail" is a valid direct image link or leave empty to use a placeholder.`,
+      Return a JSON array of objects with "name", "downloadUrl", and "thumbnail".`,
       config: {
         tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",

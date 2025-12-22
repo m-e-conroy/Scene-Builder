@@ -1,6 +1,12 @@
 
 export type PrimitiveType = 'box' | 'sphere' | 'cylinder' | 'plane' | 'cone' | 'torus';
 
+export interface SceneGroup {
+  id: string;
+  name: string;
+  isOpen: boolean;
+}
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -11,6 +17,7 @@ export interface SceneObject {
   color?: string;
   type: 'local' | 'cloud' | 'primitive';
   primitiveType?: PrimitiveType;
+  groupId?: string; // Reference to a SceneGroup
 }
 
 export interface CloudAsset {
@@ -25,6 +32,14 @@ export interface BackgroundSettings {
   position: [number, number, number];
   scale: number;
   opacity: number;
+}
+
+export interface CameraPreset {
+  id: string;
+  name: string;
+  position: [number, number, number];
+  target: [number, number, number];
+  isSystem?: boolean;
 }
 
 export type TransformMode = 'translate' | 'rotate' | 'scale';
