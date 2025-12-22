@@ -1,0 +1,7 @@
+{
+  "name": "Gemini 3D Scene Builder",
+  "description": "A high-performance 3D environment builder using React Three Fiber and Gemini AI for stylized img2img rendering.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
