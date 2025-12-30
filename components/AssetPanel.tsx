@@ -6,7 +6,7 @@ import {
   Globe, Magnet, Sparkles, Wand2, Box as BoxIcon, Circle, Cylinder as CylinderIcon, 
   Square, Cone as ConeIcon, Layers as LayersIcon, FolderPlus, Folder, ChevronDown, ChevronRight,
   MoveHorizontal, MoveVertical, Maximize, Ghost, Camera, CameraOff, Save, Navigation, Link as LinkIcon,
-  MousePointer2, HardDrive
+  MousePointer2, HardDrive, Move, RotateCw, BoxSelect, Triangle, GripVertical, FolderOpen
 } from 'lucide-react';
 import { SceneObject, SceneGroup, CloudAsset, BackgroundSettings, PrimitiveType, CameraPreset } from '../types';
 import { search3DModels } from '../services/geminiService';
@@ -53,6 +53,7 @@ const PRIMITIVES: { type: PrimitiveType, icon: React.ReactNode, name: string }[]
   { type: 'plane', icon: <Square size={16} />, name: 'Plane' },
   { type: 'cone', icon: <ConeIcon size={16} />, name: 'Cone' },
   { type: 'torus', icon: <LayersIcon size={16} />, name: 'Torus' },
+  { type: 'pyramid', icon: <Triangle size={16} />, name: 'Pyramid' },
 ];
 
 const AssetPanel: React.FC<AssetPanelProps> = ({ 
@@ -69,6 +70,10 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
+
+  // Drag and Drop State
+  const [draggedObjId, setDraggedObjId] = useState<string | null>(null);
+  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null); // 'root' for ungrouped, or groupId
 
   useEffect(() => {
     if (activeTab !== 'cloud') return;
@@ -114,14 +119,23 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
     setBgSettings(prev => ({ ...prev, url: null }));
   };
 
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.stopPropagation();
+    setDraggedObjId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
   const renderSceneItem = (obj: SceneObject, depth = 0) => (
     <div 
       key={obj.id} 
+      draggable
+      onDragStart={(e) => handleDragStart(e, obj.id)}
       onClick={() => onSelect(obj.id)} 
-      className={`flex items-center justify-between p-2 rounded-md border cursor-pointer group transition-colors ${selectedId === obj.id ? 'bg-[#1a1a1a] border-blue-500/50' : 'bg-[#0a0a0a] border-[#222]'}`}
+      className={`flex items-center justify-between p-2 rounded-md border cursor-pointer group transition-colors select-none ${selectedId === obj.id ? 'bg-[#1a1a1a] border-blue-500/50' : 'bg-[#0a0a0a] border-[#222]'} ${draggedObjId === obj.id ? 'opacity-40 border-dashed border-blue-500' : ''}`}
       style={{ marginLeft: `${depth * 16}px` }}
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
+        <GripVertical size={10} className="text-gray-700 cursor-grab active:cursor-grabbing shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
         {editingId === obj.id ? (
           <input 
             autoFocus
@@ -149,6 +163,45 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
 
   const selectedObject = objects.find(o => o.id === selectedId);
   const localObjects = objects.filter(o => o.type === 'local');
+
+  const TransformInputRow = ({ label, icon, values, onChange, isRotation = false }: { label: string, icon: React.ReactNode, values: [number, number, number], onChange: (newVal: [number, number, number]) => void, isRotation?: boolean }) => {
+    const axes = ['X', 'Y', 'Z'];
+    const colors = ['bg-red-500', 'bg-green-500', 'bg-blue-500'];
+
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2 text-[9px] text-gray-500 font-bold uppercase tracking-widest">
+          {icon} {label}
+        </div>
+        <div className="flex gap-1">
+          {axes.map((axis, i) => {
+            let displayValue = values[i];
+            if (isRotation) displayValue = displayValue * (180 / Math.PI);
+
+            return (
+              <div key={axis} className="flex items-center bg-[#111] border border-[#222] rounded overflow-hidden flex-1 min-w-0 focus-within:border-blue-500/50 transition-colors">
+                 <div className={`w-0.5 h-full ${colors[i]}`}></div>
+                 <div className="px-1.5 text-[8px] text-gray-600 font-mono font-bold select-none cursor-ew-resize">{axis}</div>
+                 <input 
+                    type="number" 
+                    step={isRotation ? 1 : 0.01}
+                    value={parseFloat(displayValue.toFixed(3))}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (isNaN(val)) return;
+                      const newValues = [...values] as [number, number, number];
+                      newValues[i] = isRotation ? val * (Math.PI / 180) : val;
+                      onChange(newValues);
+                    }}
+                    className="w-full bg-transparent text-[10px] text-gray-300 font-mono py-1 pr-1 outline-none text-right appearance-none"
+                 />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="w-80 h-full bg-[#111] border-r border-[#222] flex flex-col pointer-events-auto">
@@ -339,35 +392,101 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
 
             <div className="space-y-2">
               {groups.map(group => (
-                <div key={group.id} className="space-y-1">
+                <div 
+                  key={group.id} 
+                  className={`space-y-1 rounded-md transition-all ${dragOverGroupId === group.id ? 'bg-blue-600/20 ring-1 ring-blue-500' : ''}`}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverGroupId(group.id); }}
+                  onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); if(dragOverGroupId === group.id) setDragOverGroupId(null); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (draggedObjId) {
+                       onUpdate(draggedObjId, { groupId: group.id });
+                       if (!group.isOpen) onUpdateGroup(group.id, { isOpen: true });
+                    }
+                    setDraggedObjId(null);
+                    setDragOverGroupId(null);
+                  }}
+                >
                   <div onClick={() => onSelect(group.id)} className={`flex items-center justify-between p-2 rounded-md border cursor-pointer group transition-colors ${selectedId === group.id ? 'bg-blue-600/10 border-blue-500/50' : 'bg-[#0a0a0a] border-[#222]'}`}>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <button onClick={(e) => { e.stopPropagation(); onUpdateGroup(group.id, { isOpen: !group.isOpen }); }} className="text-gray-600">{group.isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</button>
-                      <Folder size={12} className={selectedId === group.id ? "text-blue-400 shrink-0" : "text-gray-600 shrink-0"} />
+                      {group.isOpen ? <FolderOpen size={12} className={selectedId === group.id ? "text-blue-400 shrink-0" : "text-gray-600 shrink-0"} /> : <Folder size={12} className={selectedId === group.id ? "text-blue-400 shrink-0" : "text-gray-600 shrink-0"} />}
                       {editingId === group.id ? (
                         <input autoFocus className="text-[11px] bg-black text-white border border-blue-500 rounded px-1 flex-1 min-w-0 outline-none" value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)} onBlur={() => commitEditing('grp')} onKeyDown={(e) => e.key === 'Enter' && commitEditing('grp')} onClick={(e) => e.stopPropagation()} />
                       ) : (
                         <span className={`text-[11px] truncate font-bold uppercase tracking-tight ${selectedId === group.id ? 'text-blue-300' : 'text-gray-300'}`}>{group.name}</span>
                       )}
                     </div>
+                    {selectedId === group.id && (
+                       <div className="text-[8px] text-blue-400 font-mono font-bold px-2">GROUP</div>
+                    )}
                   </div>
                   {group.isOpen && (
                     <div className="border-l border-[#222] ml-4 space-y-1 py-1">
                       {objects.filter(o => o.groupId === group.id).map(obj => renderSceneItem(obj, 0))}
+                      {objects.filter(o => o.groupId === group.id).length === 0 && (
+                          <div className="p-2 text-[8px] text-gray-700 italic border border-dashed border-[#222] rounded mx-2">Empty Group</div>
+                      )}
                     </div>
                   )}
                 </div>
               ))}
 
-              <div className="space-y-1 pt-2">
-                <h4 className="text-[8px] text-gray-700 font-black uppercase tracking-widest px-1">Ungrouped</h4>
+              <div 
+                className={`space-y-1 pt-2 rounded-md transition-all min-h-[50px] ${dragOverGroupId === 'root' ? 'bg-blue-600/20 ring-1 ring-blue-500' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverGroupId('root'); }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); if(dragOverGroupId === 'root') setDragOverGroupId(null); }}
+                onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (draggedObjId) {
+                       onUpdate(draggedObjId, { groupId: undefined });
+                    }
+                    setDraggedObjId(null);
+                    setDragOverGroupId(null);
+                }}
+              >
+                <h4 className="text-[8px] text-gray-700 font-black uppercase tracking-widest px-1 pointer-events-none flex items-center gap-1"><LayersIcon size={10}/> Ungrouped Objects</h4>
                 {objects.filter(o => !o.groupId).map(obj => renderSceneItem(obj))}
+                {objects.filter(o => !o.groupId).length === 0 && (
+                    <div className="text-[8px] text-gray-800 italic px-2 py-4 text-center border-2 border-dashed border-[#1a1a1a] rounded-lg">Drop items here to ungroup</div>
+                )}
               </div>
             </div>
             
             {/* Contextual Properties for Selected Object */}
             {selectedObject && (
               <div className="pt-6 border-t border-[#222] space-y-6">
+                
+                {/* Transform Inspector */}
+                <div className="space-y-4">
+                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <SlidersHorizontal size={12} /> Transform Inspector
+                  </h3>
+                  <div className="bg-[#0a0a0a] border border-[#222] rounded-lg p-3 space-y-3">
+                    <TransformInputRow 
+                      label="Position" 
+                      icon={<Move size={10} />} 
+                      values={selectedObject.position} 
+                      onChange={(newVal) => onUpdate(selectedObject.id, { position: newVal })}
+                    />
+                    <TransformInputRow 
+                      label="Rotation" 
+                      icon={<RotateCw size={10} />} 
+                      values={selectedObject.rotation} 
+                      isRotation
+                      onChange={(newVal) => onUpdate(selectedObject.id, { rotation: newVal })}
+                    />
+                    <TransformInputRow 
+                      label="Scale" 
+                      icon={<BoxSelect size={10} />} 
+                      values={selectedObject.scale} 
+                      onChange={(newVal) => onUpdate(selectedObject.id, { scale: newVal })}
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <h3 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Sparkles size={12} /> Visual Reference</h3>
                   <div className={`aspect-video rounded-lg border-2 border-dashed ${selectedObject.referenceImageUrl ? 'border-blue-500/50 bg-blue-500/5' : 'border-[#222] bg-black/40'} flex flex-col items-center justify-center p-3 relative group overflow-hidden transition-all`}>

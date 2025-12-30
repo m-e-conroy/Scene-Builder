@@ -159,6 +159,7 @@ const Model: React.FC<ModelProps> = ({
       case 'plane': return <Plane args={[1, 1]}>{material}</Plane>;
       case 'cone': return <Cone args={[0.5, 1, 32]}>{material}</Cone>;
       case 'torus': return <Torus args={[0.4, 0.1, 16, 100]}>{material}</Torus>;
+      case 'pyramid': return <Cone args={[0.7, 1, 4]}>{material}</Cone>;
       default: return <Box args={[1, 1, 1]}>{material}</Box>;
     }
   };

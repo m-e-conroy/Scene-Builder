@@ -1,5 +1,5 @@
 
-export type PrimitiveType = 'box' | 'sphere' | 'cylinder' | 'plane' | 'cone' | 'torus';
+export type PrimitiveType = 'box' | 'sphere' | 'cylinder' | 'plane' | 'cone' | 'torus' | 'pyramid';
 
 export interface SceneGroup {
   id: string;
