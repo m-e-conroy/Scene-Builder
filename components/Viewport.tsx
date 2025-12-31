@@ -118,10 +118,12 @@ const Model: React.FC<ModelProps> = ({
   const groupRef = useRef<THREE.Group>(null);
   const contentRef = useRef<THREE.Group>(null);
 
+  // Updated Effect: Now depends on `loading` state to ensure we register
+  // the ref once the real group (not the loader placeholder) is mounted.
   useEffect(() => {
     if (groupRef.current) onRegisterRef(obj.id, groupRef.current);
     return () => onRegisterRef(obj.id, null);
-  }, [obj.id, onRegisterRef]);
+  }, [obj.id, onRegisterRef, loading]);
 
   const processedScene = useMemo(() => {
     if (obj.type === 'primitive' || !loadedGltf) return null;
@@ -219,12 +221,27 @@ const Viewport: React.FC<ViewportProps> = ({
   const orbitControlsRef = useRef<any>(null);
   const [activeTarget, setActiveTarget] = useState<THREE.Object3D | null>(null);
   
+  // Track selectedId in a ref to access it inside callbacks without dependencies
+  const selectedIdRef = useRef(selectedId);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+
   // Store initial offsets for group transformation
   const dragOffsets = useRef<Map<string, THREE.Matrix4>>(new Map());
 
+  // Updated Registration Logic: Checks if the incoming model is the currently 
+  // selected one. If so, attaches it immediately.
   const registerModelRef = useCallback((id: string, ref: THREE.Object3D | null) => {
-    if (ref) modelRefs.current.set(id, ref);
-    else modelRefs.current.delete(id);
+    if (ref) {
+      modelRefs.current.set(id, ref);
+      if (id === selectedIdRef.current) {
+        setActiveTarget(ref);
+      }
+    } else {
+      modelRefs.current.delete(id);
+      if (id === selectedIdRef.current) {
+        setActiveTarget(null);
+      }
+    }
   }, []);
 
   const selectedGroup = useMemo(() => groups.find(g => g.id === selectedId), [groups, selectedId]);
@@ -267,6 +284,7 @@ const Viewport: React.FC<ViewportProps> = ({
     } else if (selectedId) {
       // Single object selection
       const ref = modelRefs.current.get(selectedId);
+      // We still try to set it here for cases where model is already loaded
       if (ref) setActiveTarget(ref);
     } else {
       setActiveTarget(null);
