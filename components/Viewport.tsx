@@ -13,7 +13,8 @@ import {
   Cylinder,
   Plane,
   Cone,
-  Torus
+  Torus,
+  Extrude
 } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
@@ -116,6 +117,52 @@ const cleanSceneGeometry = (scene: THREE.Object3D): boolean => {
   });
   
   return true;
+};
+
+// Custom Wedge Geometry (Right Prism)
+const Wedge: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    s.moveTo(0, 0);
+    s.lineTo(1, 0);
+    s.lineTo(0, 1);
+    s.lineTo(0, 0);
+    return s;
+  }, []);
+
+  const extrudeSettings = useMemo(() => ({
+    depth: 1,
+    bevelEnabled: false
+  }), []);
+
+  return (
+    <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[-0.5, -0.5, -0.5]}>
+      <meshStandardMaterial color={color} />
+    </Extrude>
+  );
+};
+
+// Custom Oblique Wedge Geometry (Skewed Prism)
+const ObliqueWedge: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    s.moveTo(0, 0);
+    s.lineTo(1, 0);
+    s.lineTo(0.5, 1); // Centered top vertex (Isosceles triangle profile)
+    s.lineTo(0, 0);
+    return s;
+  }, []);
+
+  const extrudeSettings = useMemo(() => ({
+    depth: 1,
+    bevelEnabled: false
+  }), []);
+
+  return (
+     <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[-0.5, -0.5, -0.5]}>
+      <meshStandardMaterial color={color} />
+    </Extrude>
+  );
 };
 
 interface ModelProps {
@@ -238,7 +285,8 @@ const Model: React.FC<ModelProps> = ({
   }, [loadedScene, obj.color, obj.type]);
 
   const renderPrimitive = () => {
-    const material = <meshStandardMaterial color={obj.color || '#3b82f6'} />;
+    const color = obj.color || '#3b82f6';
+    const material = <meshStandardMaterial color={color} />;
     const shadowProps = { castShadow: true, receiveShadow: true };
 
     switch (obj.primitiveType) {
@@ -249,6 +297,8 @@ const Model: React.FC<ModelProps> = ({
       case 'cone': return <Cone args={[0.5, 1, 32]} {...shadowProps}>{material}</Cone>;
       case 'torus': return <Torus args={[0.4, 0.1, 16, 100]} {...shadowProps}>{material}</Torus>;
       case 'pyramid': return <Cone args={[0.7, 1, 4]} {...shadowProps}>{material}</Cone>;
+      case 'wedge': return <Wedge color={color} shadowProps={shadowProps} />;
+      case 'oblique-wedge': return <ObliqueWedge color={color} shadowProps={shadowProps} />;
       default: return <Box args={[1, 1, 1]} {...shadowProps}>{material}</Box>;
     }
   };

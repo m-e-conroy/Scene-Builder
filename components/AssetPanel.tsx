@@ -5,7 +5,8 @@ import {
   Globe, Magnet, Sparkles, Wand2, Box as BoxIcon, Circle, Cylinder as CylinderIcon, 
   Square, Cone as ConeIcon, Layers as LayersIcon, FolderPlus, Folder, ChevronDown, ChevronRight,
   MoveHorizontal, MoveVertical, Maximize, Ghost, Camera, CameraOff, Save, Navigation, Link as LinkIcon,
-  MousePointer2, HardDrive, Move, RotateCw, BoxSelect, Triangle, GripVertical, FolderOpen
+  MousePointer2, HardDrive, Move, RotateCw, BoxSelect, Triangle, GripVertical, FolderOpen,
+  TriangleRight, Slice // Imported generic icons for new shapes
 } from 'lucide-react';
 import { SceneObject, SceneGroup, CloudAsset, BackgroundSettings, PrimitiveType, CameraPreset } from '../types';
 import { search3DModels } from '../services/geminiService';
@@ -53,6 +54,8 @@ const PRIMITIVES: { type: PrimitiveType, icon: React.ReactNode, name: string }[]
   { type: 'cone', icon: <ConeIcon size={16} />, name: 'Cone' },
   { type: 'torus', icon: <LayersIcon size={16} />, name: 'Torus' },
   { type: 'pyramid', icon: <Triangle size={16} />, name: 'Pyramid' },
+  { type: 'wedge', icon: <TriangleRight size={16} />, name: 'Wedge' },
+  { type: 'oblique-wedge', icon: <Slice size={16} />, name: 'Oblique Wedge' },
 ];
 
 const AssetPanel: React.FC<AssetPanelProps> = ({ 
@@ -229,7 +232,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
               {PRIMITIVES.map((p) => (
                 <button key={p.type} onClick={() => onAddPrimitive(p.type)} className="flex flex-col items-center justify-center gap-2 aspect-square bg-[#0a0a0a] border border-[#222] rounded-md hover:border-blue-500 hover:bg-blue-600/5 transition-all group">
                   <div className="text-gray-500 group-hover:text-blue-400">{p.icon}</div>
-                  <span className="text-[9px] font-black uppercase text-gray-600 group-hover:text-white">{p.name}</span>
+                  <span className="text-[9px] font-black uppercase text-gray-600 group-hover:text-white text-center px-1">{p.name}</span>
                 </button>
               ))}
             </div>

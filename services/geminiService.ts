@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { CloudAsset, SceneObject, SceneGroup } from "../types";
 
@@ -29,15 +28,26 @@ export const processSceneToImage = async (
   // Collect objects that have reference images
   const objectsWithRefs = objects.filter(o => o.referenceImageUrl);
 
-  // Generate a textual description of the scene semantics
-  const sceneSemantics = groups.map(group => {
-    const children = objects.filter(o => o.groupId === group.id).map(o => o.name);
-    return `- Group "${group.name}": contains ${children.join(', ') || 'nothing'}`;
-  }).join('\n') + '\n' + 
-  objects.filter(o => !o.groupId).map(o => {
-    const refSuffix = o.referenceImageUrl ? " (HAS ATTACHED REFERENCE IMAGE)" : "";
-    return `- Ungrouped object: "${o.name}"${refSuffix}`;
-  }).join('\n');
+  // Helper to generate a detailed description for each object
+  // This helps the AI map the visual block-out to the semantic name provided by the user
+  const describeObject = (o: SceneObject) => {
+    const typeDesc = o.type === 'primitive' ? (o.primitiveType || 'geometric shape') : '3D model';
+    const colorDesc = o.color ? `displayed as ${o.color}` : 'default color';
+    // Round positions to 1 decimal for cleanliness
+    const posDesc = `at world coordinates [${o.position[0].toFixed(1)}, ${o.position[1].toFixed(1)}, ${o.position[2].toFixed(1)}]`;
+    const refTag = o.referenceImageUrl ? " [HAS_REFERENCE_IMAGE]" : "";
+    
+    return `"${o.name}" (${typeDesc}, ${colorDesc}, ${posDesc})${refTag}`;
+  };
+
+  // Generate a comprehensive, hierarchical description of the scene
+  const sceneSemantics = [
+    ...groups.map(group => {
+      const children = objects.filter(o => o.groupId === group.id).map(o => `    - ${describeObject(o)}`).join('\n');
+      return `- Group "${group.name}":\n${children}`;
+    }),
+    ...objects.filter(o => !o.groupId).map(o => `- Ungrouped: ${describeObject(o)}`)
+  ].join('\n');
 
   const getFidelityInstruction = (s: number) => {
     const intensity = (1 - s).toFixed(2);
@@ -45,19 +55,22 @@ export const processSceneToImage = async (
       return `
         [SPATIAL CONSTRAINT: ABSOLUTE]
         - Fidelity Intensity: ${intensity}.
-        - You are strictly prohibited from altering the silhouette or volume.
+        - You are strictly prohibited from altering the silhouette or volume of the provided 3D block-out.
+        - Render exactly what is seen, just applying realistic materials based on object names.
       `;
     } else if (s > 0.75) {
       return `
         [SPATIAL CONSTRAINT: FLUID]
         - Fidelity Intensity: ${intensity}.
-        - Use the source image as a depth guide.
+        - Use the source image as a loose spatial guide.
+        - You may reimagine details and forms significantly to better match the style of the prompt.
       `;
     } else {
       return `
         [SPATIAL CONSTRAINT: BALANCED]
         - Fidelity Intensity: ${intensity}.
-        - Preserve primary forms but enhance surface details.
+        - Preserve the primary forms and layout of the block-out.
+        - Enhance surface details, lighting, and small geometric features.
       `;
     }
   };
@@ -66,30 +79,32 @@ export const processSceneToImage = async (
 
   const masterPrompt = `
     [TASK: NEURAL RENDER ENGINE]
-    Transform the attached 3D block-out into a professional CGI masterpiece. 
+    Transform the attached 3D viewport screenshot into a high-quality rendered image.
     
-    [SCENE HIERARCHY & SEMANTICS]
+    [SCENE GRAPH & SEMANTICS]
+    The image contains the following objects. Use their names to infer their material and appearance:
     ${sceneSemantics}
     
     [INSTRUCTIONS: REFERENCE IMAGES]
     I have provided ${objectsWithRefs.length} additional reference images.
-    Each reference image corresponds to a specific object in the scene.
-    ${objectsWithRefs.map((obj, idx) => `- Reference Image ${idx + 2} (Part ${idx + 2}) is for the object named: "${obj.name}". Use its textures, colors, and materials exactly for that specific object.`).join('\n')}
+    ${objectsWithRefs.map((obj, idx) => `- Reference Image ${idx + 2} corresponds to object: "${obj.name}". Apply its style/texture to that specific object in the scene.`).join('\n')}
 
     [INSTRUCTIONS: SEMANTIC MAPPING]
-    - Match the 3D shapes in the primary image to the names provided above.
-    - If a box is named "Server Tower", render it with metallic panels.
-    - Respect the relationships described in groups.
+    1. **Identify Objects**: Look at the "viewport color" and "world coordinates" in the Scene Graph above to identify which shape in the image corresponds to which name.
+    2. **Apply Materials**: Use the object's NAME to determine its material. 
+       - Example: If an object is named "Wooden Crates", render it with wood texture.
+       - Example: If an object is named "Neon Sign", make it emit light.
+    3. **Respect Hierarchy**: Objects in the same group often share context or lighting conditions.
 
-    [VISUAL STYLE & ENVIRONMENT]
-    Prompt: "${prompt}"
+    [VISUAL STYLE & USER PROMPT]
+    "${prompt}"
 
     [STRUCTURAL CONSTRAINTS]
     ${structuralInstruction}
 
     [TECHNICAL SPECIFICATIONS]
     - Realistic Global Illumination (GI) and HDR lighting.
-    - PBR surfaces: realistic roughness, metalness.
+    - Physically Based Rendering (PBR) materials.
     - Cinematic post-processing.
   `;
 
