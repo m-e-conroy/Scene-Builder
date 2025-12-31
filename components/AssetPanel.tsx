@@ -162,6 +162,8 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
   );
 
   const selectedObject = objects.find(o => o.id === selectedId);
+  const selectedGroup = groups.find(g => g.id === selectedId);
+  
   const localObjects = objects.filter(o => o.type === 'local');
 
   const TransformInputRow = ({ label, icon, values, onChange, isRotation = false }: { label: string, icon: React.ReactNode, values: [number, number, number], onChange: (newVal: [number, number, number]) => void, isRotation?: boolean }) => {
@@ -418,8 +420,11 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                         <span className={`text-[11px] truncate font-bold uppercase tracking-tight ${selectedId === group.id ? 'text-blue-300' : 'text-gray-300'}`}>{group.name}</span>
                       )}
                     </div>
-                    {selectedId === group.id && (
-                       <div className="text-[8px] text-blue-400 font-mono font-bold px-2">GROUP</div>
+                    {selectedId === group.id && editingId !== group.id && (
+                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={(e) => { e.stopPropagation(); startEditing(group.id, group.name); }} className="p-1 text-gray-600 hover:text-blue-500"><Edit2 size={12} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); onRemoveGroup(group.id); }} className="p-1 text-gray-600 hover:text-red-500"><Trash2 size={12} /></button>
+                       </div>
                     )}
                   </div>
                   {group.isOpen && (
@@ -455,66 +460,83 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
               </div>
             </div>
             
-            {/* Contextual Properties for Selected Object */}
-            {selectedObject && (
+            {/* Contextual Properties for Selected Object OR Group */}
+            {(selectedObject || selectedGroup) && (
               <div className="pt-6 border-t border-[#222] space-y-6">
                 
                 {/* Transform Inspector */}
-                <div className="space-y-4">
-                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <SlidersHorizontal size={12} /> Transform Inspector
-                  </h3>
-                  <div className="bg-[#0a0a0a] border border-[#222] rounded-lg p-3 space-y-3">
-                    <TransformInputRow 
-                      label="Position" 
-                      icon={<Move size={10} />} 
-                      values={selectedObject.position} 
-                      onChange={(newVal) => onUpdate(selectedObject.id, { position: newVal })}
-                    />
-                    <TransformInputRow 
-                      label="Rotation" 
-                      icon={<RotateCw size={10} />} 
-                      values={selectedObject.rotation} 
-                      isRotation
-                      onChange={(newVal) => onUpdate(selectedObject.id, { rotation: newVal })}
-                    />
-                    <TransformInputRow 
-                      label="Scale" 
-                      icon={<BoxSelect size={10} />} 
-                      values={selectedObject.scale} 
-                      onChange={(newVal) => onUpdate(selectedObject.id, { scale: newVal })}
-                    />
+                {/* If it is a group, we can still show a transform inspector but it acts as a tool to move the group, not read properties. 
+                    Actually, we don't store group position. So we might hide the input fields for Groups or make them relative. 
+                    For now, keep it for Objects only as per prompt requirements, but Viewport will handle group visual transform. 
+                    The user asked for 'Transform Inspector' on objects previously. I'll show a message for groups. */}
+                
+                {selectedObject && (
+                  <>
+                  <div className="space-y-4">
+                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <SlidersHorizontal size={12} /> Transform Inspector
+                    </h3>
+                    <div className="bg-[#0a0a0a] border border-[#222] rounded-lg p-3 space-y-3">
+                      <TransformInputRow 
+                        label="Position" 
+                        icon={<Move size={10} />} 
+                        values={selectedObject.position} 
+                        onChange={(newVal) => onUpdate(selectedObject.id, { position: newVal })}
+                      />
+                      <TransformInputRow 
+                        label="Rotation" 
+                        icon={<RotateCw size={10} />} 
+                        values={selectedObject.rotation} 
+                        isRotation
+                        onChange={(newVal) => onUpdate(selectedObject.id, { rotation: newVal })}
+                      />
+                      <TransformInputRow 
+                        label="Scale" 
+                        icon={<BoxSelect size={10} />} 
+                        values={selectedObject.scale} 
+                        onChange={(newVal) => onUpdate(selectedObject.id, { scale: newVal })}
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <h3 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Sparkles size={12} /> Visual Reference</h3>
-                  <div className={`aspect-video rounded-lg border-2 border-dashed ${selectedObject.referenceImageUrl ? 'border-blue-500/50 bg-blue-500/5' : 'border-[#222] bg-black/40'} flex flex-col items-center justify-center p-3 relative group overflow-hidden transition-all`}>
-                    {selectedObject.referenceImageUrl ? (
-                      <>
-                        <img src={selectedObject.referenceImageUrl} className="absolute inset-0 w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                          <button onClick={() => onUpdate(selectedObject.id, { referenceImageUrl: undefined })} className="p-2 bg-red-600 rounded-full text-white"><Trash2 size={16} /></button>
-                        </div>
-                      </>
-                    ) : (
-                      <label className="flex flex-col items-center cursor-pointer">
-                        <Upload size={18} className="text-gray-600 mb-2" />
-                        <span className="text-[9px] text-gray-500 font-bold uppercase">Upload Guide Image</span>
-                        <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleRefImageUpload(selectedObject.id, e.target.files[0])} />
-                      </label>
-                    )}
+                  <div>
+                    <h3 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Sparkles size={12} /> Visual Reference</h3>
+                    <div className={`aspect-video rounded-lg border-2 border-dashed ${selectedObject.referenceImageUrl ? 'border-blue-500/50 bg-blue-500/5' : 'border-[#222] bg-black/40'} flex flex-col items-center justify-center p-3 relative group overflow-hidden transition-all`}>
+                      {selectedObject.referenceImageUrl ? (
+                        <>
+                          <img src={selectedObject.referenceImageUrl} className="absolute inset-0 w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <button onClick={() => onUpdate(selectedObject.id, { referenceImageUrl: undefined })} className="p-2 bg-red-600 rounded-full text-white"><Trash2 size={16} /></button>
+                          </div>
+                        </>
+                      ) : (
+                        <label className="flex flex-col items-center cursor-pointer">
+                          <Upload size={18} className="text-gray-600 mb-2" />
+                          <span className="text-[9px] text-gray-500 font-bold uppercase">Upload Guide Image</span>
+                          <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleRefImageUpload(selectedObject.id, e.target.files[0])} />
+                        </label>
+                      )}
+                    </div>
+                    <p className="mt-2 text-[8px] text-gray-600 leading-tight">Neural renderer will use this image as a style/texture reference specifically for this object.</p>
                   </div>
-                  <p className="mt-2 text-[8px] text-gray-600 leading-tight">Neural renderer will use this image as a style/texture reference specifically for this object.</p>
-                </div>
 
-                <div>
-                  <h3 className="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-3 flex items-center gap-2"><Palette size={12} /> Color Override</h3>
-                  <div className="flex items-center gap-3">
-                    <input type="color" value={selectedObject.color || "#ffffff"} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="w-8 h-8 bg-transparent border-none rounded cursor-pointer" />
-                    <input type="text" value={selectedObject.color || "#ffffff"} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="flex-1 bg-black/40 border border-[#333] rounded px-2 py-1.5 text-[10px] text-gray-300 font-mono focus:outline-none focus:border-blue-500 uppercase" />
+                  <div>
+                    <h3 className="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-3 flex items-center gap-2"><Palette size={12} /> Color Override</h3>
+                    <div className="flex items-center gap-3">
+                      <input type="color" value={selectedObject.color || "#ffffff"} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="w-8 h-8 bg-transparent border-none rounded cursor-pointer" />
+                      <input type="text" value={selectedObject.color || "#ffffff"} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="flex-1 bg-black/40 border border-[#333] rounded px-2 py-1.5 text-[10px] text-gray-300 font-mono focus:outline-none focus:border-blue-500 uppercase" />
+                    </div>
                   </div>
-                </div>
+                  </>
+                )}
+                
+                {selectedGroup && (
+                   <div className="p-4 bg-blue-900/10 border border-blue-500/30 rounded-lg text-center">
+                      <FolderOpen size={24} className="mx-auto text-blue-500 mb-2" />
+                      <h3 className="text-xs font-bold text-blue-400 uppercase tracking-widest">Group Selected</h3>
+                      <p className="text-[9px] text-gray-400 mt-1">Use the Transform Gizmo in the viewport to Move, Rotate, or Scale the entire group together.</p>
+                   </div>
+                )}
               </div>
             )}
           </div>
@@ -522,6 +544,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
 
         {activeTab === 'env' && (
           <div className="space-y-6 pb-20">
+             {/* ... (no changes in env tab) */}
             <div>
               <label className="block text-[10px] text-gray-500 uppercase font-black tracking-widest mb-2">Grid & Snapping</label>
               <div className="bg-[#0a0a0a] p-4 rounded-xl border border-[#222]">

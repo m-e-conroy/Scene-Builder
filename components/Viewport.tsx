@@ -34,7 +34,7 @@ const Background: React.FC<{ settings: BackgroundSettings }> = ({ settings }) =>
     <Image 
       url={settings.url} 
       position={settings.position} 
-      scale={[settings.scale, settings.scale, 1]}
+      scale={[settings.scale, settings.scale]}
       transparent
       opacity={settings.opacity}
       toneMapped={false}
@@ -151,16 +151,18 @@ const Model: React.FC<ModelProps> = ({
   }, [loadedGltf, obj.color, obj.type]);
 
   const renderPrimitive = () => {
-    const material = <meshStandardMaterial color={obj.color || '#3b82f6'} castShadow receiveShadow />;
+    const material = <meshStandardMaterial color={obj.color || '#3b82f6'} />;
+    const shadowProps = { castShadow: true, receiveShadow: true };
+
     switch (obj.primitiveType) {
-      case 'box': return <Box args={[1, 1, 1]}>{material}</Box>;
-      case 'sphere': return <Sphere args={[0.5, 32, 32]}>{material}</Sphere>;
-      case 'cylinder': return <Cylinder args={[0.5, 0.5, 1, 32]}>{material}</Cylinder>;
-      case 'plane': return <Plane args={[1, 1]}>{material}</Plane>;
-      case 'cone': return <Cone args={[0.5, 1, 32]}>{material}</Cone>;
-      case 'torus': return <Torus args={[0.4, 0.1, 16, 100]}>{material}</Torus>;
-      case 'pyramid': return <Cone args={[0.7, 1, 4]}>{material}</Cone>;
-      default: return <Box args={[1, 1, 1]}>{material}</Box>;
+      case 'box': return <Box args={[1, 1, 1]} {...shadowProps}>{material}</Box>;
+      case 'sphere': return <Sphere args={[0.5, 32, 32]} {...shadowProps}>{material}</Sphere>;
+      case 'cylinder': return <Cylinder args={[0.5, 0.5, 1, 32]} {...shadowProps}>{material}</Cylinder>;
+      case 'plane': return <Plane args={[1, 1]} {...shadowProps}>{material}</Plane>;
+      case 'cone': return <Cone args={[0.5, 1, 32]} {...shadowProps}>{material}</Cone>;
+      case 'torus': return <Torus args={[0.4, 0.1, 16, 100]} {...shadowProps}>{material}</Torus>;
+      case 'pyramid': return <Cone args={[0.7, 1, 4]} {...shadowProps}>{material}</Cone>;
+      default: return <Box args={[1, 1, 1]} {...shadowProps}>{material}</Box>;
     }
   };
 
@@ -217,50 +219,148 @@ const Viewport: React.FC<ViewportProps> = ({
   const orbitControlsRef = useRef<any>(null);
   const [activeTarget, setActiveTarget] = useState<THREE.Object3D | null>(null);
   
-  // Track last pivot state for live group transformation
-  const lastPivotPos = useRef(new THREE.Vector3());
+  // Store initial offsets for group transformation
+  const dragOffsets = useRef<Map<string, THREE.Matrix4>>(new Map());
 
   const registerModelRef = useCallback((id: string, ref: THREE.Object3D | null) => {
     if (ref) modelRefs.current.set(id, ref);
     else modelRefs.current.delete(id);
-    
-    // Auto-attach if this is the object that was just selected
-    if (id === selectedId && !groups.find(g => g.id === id)) {
-      setActiveTarget(ref);
-    }
-  }, [selectedId, groups]);
+  }, []);
 
   const selectedGroup = useMemo(() => groups.find(g => g.id === selectedId), [groups, selectedId]);
   const objectsInSelectedGroup = useMemo(() => objects.filter(o => o.groupId === selectedId), [objects, selectedId]);
 
-  const groupCenter = useMemo(() => {
-    if (!selectedGroup || objectsInSelectedGroup.length === 0) return new THREE.Vector3(0, 0, 0);
-    const box = new THREE.Box3();
-    objectsInSelectedGroup.forEach(obj => {
-      const ref = modelRefs.current.get(obj.id);
-      if (ref) box.expandByObject(ref);
-      else box.expandByPoint(new THREE.Vector3(...obj.position));
-    });
-    return box.getCenter(new THREE.Vector3());
-  }, [selectedGroup, objectsInSelectedGroup]);
+  // --- Group Transformation Logic (Stateless Driver Approach) ---
 
-  // Sync active target and pivot position when selection changes
+  // When selection changes or objects update, reposition the pivot to the center of the group
   useEffect(() => {
-    if (!selectedId) {
-      setActiveTarget(null);
-    } else if (selectedGroup) {
-      if (pivotRef.current) {
-        pivotRef.current.position.copy(groupCenter);
-        pivotRef.current.rotation.set(0, 0, 0);
-        pivotRef.current.scale.set(1, 1, 1);
-        lastPivotPos.current.copy(groupCenter);
+    if (selectedGroup && pivotRef.current) {
+      // 1. Calculate Bounding Box of the Group
+      const box = new THREE.Box3();
+      let hasObjects = false;
+      objectsInSelectedGroup.forEach(obj => {
+        const ref = modelRefs.current.get(obj.id);
+        if (ref) {
+          ref.updateMatrixWorld();
+          box.expandByObject(ref);
+          hasObjects = true;
+        }
+      });
+      
+      if (hasObjects) {
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        
+        // 2. Move Pivot to Center (resetting rotation/scale to neutral)
+        pivotRef.current.position.copy(center);
+        pivotRef.current.rotation.set(0,0,0);
+        pivotRef.current.scale.set(1,1,1);
+        pivotRef.current.updateMatrixWorld();
+        
+        // 3. Set Pivot as the TransformControl target
+        setActiveTarget(pivotRef.current);
+      } else {
+        // Empty group, just put pivot at origin
+        pivotRef.current.position.set(0,0,0);
         setActiveTarget(pivotRef.current);
       }
-    } else {
+    } else if (selectedId) {
+      // Single object selection
       const ref = modelRefs.current.get(selectedId);
       if (ref) setActiveTarget(ref);
+    } else {
+      setActiveTarget(null);
     }
-  }, [selectedId, selectedGroup, groupCenter]);
+  }, [selectedId, selectedGroup, objectsInSelectedGroup]);
+
+
+  // 1. On Drag Start: Capture the relative transform of every object to the pivot
+  const onTransformStart = useCallback(() => {
+     setOrbitEnabled(false);
+     if (selectedGroup && pivotRef.current) {
+        dragOffsets.current.clear();
+        pivotRef.current.updateMatrixWorld();
+        const pivotInv = pivotRef.current.matrixWorld.clone().invert();
+        
+        objectsInSelectedGroup.forEach(obj => {
+           const ref = modelRefs.current.get(obj.id);
+           if (ref) {
+              ref.updateMatrixWorld();
+              // Calculate: LocalOffset = PivotInverse * ObjectWorld
+              const localMatrix = new THREE.Matrix4().multiplyMatrices(pivotInv, ref.matrixWorld);
+              dragOffsets.current.set(obj.id, localMatrix);
+           }
+        });
+     }
+  }, [selectedGroup, objectsInSelectedGroup]);
+
+  // 2. On Drag Change: Apply transforms manually from Pivot -> Objects
+  const onTransformChange = useCallback(() => {
+     if (boxHelperRef.current) boxHelperRef.current.update();
+     
+     if (selectedGroup && pivotRef.current) {
+        // The pivot has moved/rotated/scaled. Update objects to match.
+        const pivotMatrix = pivotRef.current.matrixWorld;
+        
+        objectsInSelectedGroup.forEach(obj => {
+           const ref = modelRefs.current.get(obj.id);
+           const offset = dragOffsets.current.get(obj.id);
+           
+           if (ref && offset) {
+              // NewObjectWorld = NewPivotWorld * LocalOffset
+              const newWorld = new THREE.Matrix4().multiplyMatrices(pivotMatrix, offset);
+              
+              const pos = new THREE.Vector3();
+              const quat = new THREE.Quaternion();
+              const scale = new THREE.Vector3();
+              
+              newWorld.decompose(pos, quat, scale);
+              
+              // Apply directly to the ref (bypassing React for performance/smoothness)
+              ref.position.copy(pos);
+              ref.quaternion.copy(quat);
+              ref.scale.copy(scale);
+              ref.updateMatrixWorld();
+           }
+        });
+     }
+  }, [selectedGroup, objectsInSelectedGroup]);
+
+  // 3. On Drag End: Commit final positions to React State
+  const onTransformEnd = useCallback(() => {
+     setOrbitEnabled(true);
+     dragOffsets.current.clear();
+     
+     if (selectedGroup) {
+        const updates = objectsInSelectedGroup.map(obj => {
+           const ref = modelRefs.current.get(obj.id);
+           if (!ref) return null;
+           
+           // Read the final world transform we just applied
+           const r = new THREE.Euler().setFromQuaternion(ref.quaternion);
+           
+           return {
+              id: obj.id,
+              updates: {
+                 position: [ref.position.x, ref.position.y, ref.position.z] as [number, number, number],
+                 rotation: [r.x, r.y, r.z] as [number, number, number],
+                 scale: [ref.scale.x, ref.scale.y, ref.scale.z] as [number, number, number]
+              }
+           };
+        }).filter(Boolean) as { id: string, updates: Partial<SceneObject> }[];
+        
+        onUpdateMany(updates);
+     } else if (selectedId && activeTarget) {
+         // Single object update
+         const ref = activeTarget;
+         const r = new THREE.Euler().setFromQuaternion(ref.quaternion);
+         onUpdate(selectedId, {
+             position: [ref.position.x, ref.position.y, ref.position.z],
+             rotation: [r.x, r.y, r.z],
+             scale: [ref.scale.x, ref.scale.y, ref.scale.z],
+         });
+     }
+  }, [selectedGroup, objectsInSelectedGroup, onUpdate, onUpdateMany, selectedId, activeTarget]);
 
   // Expose current camera view for saving
   const handleCaptureView = useCallback(() => {
@@ -274,58 +374,9 @@ const Viewport: React.FC<ViewportProps> = ({
     }
   }, [onSetCapturedView]);
 
-  // We'll call this when user saves a preset in AssetPanel
   useEffect(() => {
     (window as any).captureCurrentView = handleCaptureView;
   }, [handleCaptureView]);
-
-  const handleTransformChange = useCallback(() => {
-    // 1. Update the visible bounding box helper immediately
-    if (boxHelperRef.current) {
-      boxHelperRef.current.update();
-    }
-    
-    // 2. If moving a group, move all children in real-time
-    if (selectedGroup && activeTarget === pivotRef.current && pivotRef.current) {
-      const currentPos = pivotRef.current.position;
-      const delta = currentPos.clone().sub(lastPivotPos.current);
-      
-      objectsInSelectedGroup.forEach(obj => {
-        const ref = modelRefs.current.get(obj.id);
-        if (ref) {
-          ref.position.add(delta);
-        }
-      });
-      
-      lastPivotPos.current.copy(currentPos);
-    }
-  }, [selectedGroup, activeTarget, objectsInSelectedGroup]);
-
-  const onTransformEnd = useCallback(() => {
-    setOrbitEnabled(true);
-    if (!selectedId || !activeTarget) return;
-
-    if (selectedGroup) {
-      // Finalize all member positions in React state
-      const updates = objectsInSelectedGroup.map(obj => {
-        const ref = modelRefs.current.get(obj.id);
-        return {
-          id: obj.id,
-          updates: { 
-            position: ref ? [ref.position.x, ref.position.y, ref.position.z] as [number, number, number] : obj.position
-          }
-        };
-      });
-      onUpdateMany(updates);
-    } else {
-      // Finalize single object transformation
-      onUpdate(selectedId, {
-        position: [activeTarget.position.x, activeTarget.position.y, activeTarget.position.z],
-        rotation: [activeTarget.rotation.x, activeTarget.rotation.y, activeTarget.rotation.z],
-        scale: [activeTarget.scale.x, activeTarget.scale.y, activeTarget.scale.z],
-      });
-    }
-  }, [selectedId, selectedGroup, objectsInSelectedGroup, onUpdate, onUpdateMany, activeTarget]);
 
   return (
     <div className="flex-1 h-full relative bg-[#050505] overflow-hidden">
@@ -355,6 +406,7 @@ const Viewport: React.FC<ViewportProps> = ({
             ))}
           </group>
 
+          {/* Invisible Pivot Group used as a driver for transformations */}
           <group ref={pivotRef} />
 
           {activeTarget && (
@@ -365,9 +417,9 @@ const Viewport: React.FC<ViewportProps> = ({
                 translationSnap={snapEnabled ? snapSize : null}
                 rotationSnap={snapEnabled ? Math.PI / 12 : null}
                 scaleSnap={snapEnabled ? (snapSize / 10) : null}
-                onMouseDown={() => setOrbitEnabled(false)}
+                onMouseDown={onTransformStart}
+                onChange={onTransformChange}
                 onMouseUp={onTransformEnd}
-                onChange={handleTransformChange}
               />
               <boxHelper 
                 ref={boxHelperRef} 
