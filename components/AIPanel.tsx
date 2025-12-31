@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { Sparkles, Sliders, Image as ImageIcon, Loader2, Info, Maximize2 } from 'lucide-react';
+import { Sparkles, Sliders, Image as ImageIcon, Loader2, Info, Maximize2, Sun, Trash2, Upload } from 'lucide-react';
 
 interface AIPanelProps {
   prompt: string;
@@ -11,11 +10,26 @@ interface AIPanelProps {
   isGenerating: boolean;
   resultImage: string | null;
   onOpenPreview: () => void;
+  lightingReference: string | null;
+  setLightingReference: (url: string | null) => void;
 }
 
 const AIPanel: React.FC<AIPanelProps> = ({ 
-  prompt, setPrompt, strength, setStrength, onGenerate, isGenerating, resultImage, onOpenPreview 
+  prompt, setPrompt, strength, setStrength, onGenerate, isGenerating, resultImage, onOpenPreview,
+  lightingReference, setLightingReference
 }) => {
+  
+  const handleLightingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setLightingReference(ev.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   return (
     <div className="w-80 h-full bg-[#111] border-l border-[#222] flex flex-col pointer-events-auto overflow-y-auto">
       <div className="p-4 border-b border-[#222]">
@@ -33,8 +47,40 @@ const AIPanel: React.FC<AIPanelProps> = ({
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe materials, lighting, and mood..."
-              className="w-full h-32 bg-[#0a0a0a] border border-[#222] rounded-md p-3 text-xs text-white focus:outline-none focus:border-blue-500 resize-none leading-relaxed transition-colors"
+              className="w-full h-24 bg-[#0a0a0a] border border-[#222] rounded-md p-3 text-xs text-white focus:outline-none focus:border-blue-500 resize-none leading-relaxed transition-colors"
             />
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-gray-500 uppercase font-bold mb-2 flex justify-between items-center">
+              <span className="flex items-center gap-1"><Sun size={10} /> Lighting Reference</span>
+              {lightingReference && <span className="text-[8px] text-green-500 font-mono">ACTIVE</span>}
+            </label>
+            
+            <div className={`relative w-full h-16 rounded-md border-2 border-dashed transition-all overflow-hidden group
+              ${lightingReference ? 'border-green-500/50 bg-green-500/10' : 'border-[#222] bg-[#0a0a0a] hover:border-blue-500/50'}`}>
+              
+              {lightingReference ? (
+                <>
+                  <img src={lightingReference} alt="Light Ref" className="w-full h-full object-cover opacity-60" />
+                  <div className="absolute inset-0 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60">
+                     <button 
+                        onClick={() => setLightingReference(null)} 
+                        className="p-1.5 bg-red-600 rounded text-white hover:bg-red-500"
+                        title="Remove Reference"
+                     >
+                       <Trash2 size={12} />
+                     </button>
+                  </div>
+                </>
+              ) : (
+                <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer">
+                  <Upload size={14} className="text-gray-600 mb-1" />
+                  <span className="text-[8px] text-gray-600 font-bold uppercase">Upload Style Match</span>
+                  <input type="file" className="hidden" accept="image/*" onChange={handleLightingUpload} />
+                </label>
+              )}
+            </div>
           </div>
 
           <div>

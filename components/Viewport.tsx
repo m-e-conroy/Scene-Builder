@@ -374,7 +374,13 @@ const Viewport: React.FC<ViewportProps> = ({
     } else {
       modelRefs.current.delete(id);
       if (id === selectedIdRef.current) {
-        setActiveTarget(null);
+        // Only clear if the deleted ID is the current target's ID
+        setActiveTarget((prev) => {
+          // If we could check prev === ref it would be ideal, but ref is null here.
+          // We assume if the ID matches the selected ID, we should clear it.
+          // This prevents stale references.
+          return null;
+        });
       }
     }
   }, []);
@@ -567,6 +573,7 @@ const Viewport: React.FC<ViewportProps> = ({
           {activeTarget && (
             <>
               <TransformControls 
+                key={activeTarget.uuid}
                 object={activeTarget}
                 mode={transformMode}
                 translationSnap={snapEnabled ? snapSize : null}

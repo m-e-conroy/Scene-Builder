@@ -48,6 +48,7 @@ const App: React.FC = () => {
   // AI State
   const [prompt, setPrompt] = useState('');
   const [strength, setStrength] = useState(0.5);
+  const [lightingReference, setLightingReference] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [sourceImage, setSourceImage] = useState<string | null>(null);
@@ -195,6 +196,7 @@ const App: React.FC = () => {
     setCameraPresets(DEFAULT_CAMERA_PRESETS);
     setPrompt('');
     setStrength(0.5);
+    setLightingReference(null);
     setResultImage(null);
     setSourceImage(null);
     showStatus("NEW PROJECT STARTED");
@@ -258,7 +260,7 @@ const App: React.FC = () => {
         groups,
         bgSettings: bgSettingsToSave,
         cameraPresets,
-        aiSettings: { prompt, strength }
+        aiSettings: { prompt, strength, lightingReference }
       };
 
       const jsonString = JSON.stringify(projectData, null, 2);
@@ -298,6 +300,7 @@ const App: React.FC = () => {
         if (json.aiSettings) {
           setPrompt(json.aiSettings.prompt || '');
           setStrength(json.aiSettings.strength ?? 0.5);
+          setLightingReference(json.aiSettings.lightingReference || null);
         }
         
         setHistory({ past: [], future: [] });
@@ -434,7 +437,7 @@ const App: React.FC = () => {
       setSourceImage(base64);
       setIsCapturing(false);
       setSelectedId(currentSelected);
-      const result = await processSceneToImage(base64, prompt, strength, objects, groups);
+      const result = await processSceneToImage(base64, prompt, strength, objects, groups, lightingReference);
       setResultImage(result);
       if (result) setIsPreviewOpen(true);
     } catch (err) {
@@ -536,7 +539,18 @@ const App: React.FC = () => {
           onSetCapturedView={onSetCapturedView}
         />
         
-        <AIPanel prompt={prompt} setPrompt={setPrompt} strength={strength} setStrength={setStrength} onGenerate={handleGenerate} isGenerating={isGenerating} resultImage={resultImage} onOpenPreview={() => setIsPreviewOpen(true)} />
+        <AIPanel 
+          prompt={prompt} 
+          setPrompt={setPrompt} 
+          strength={strength} 
+          setStrength={setStrength} 
+          onGenerate={handleGenerate} 
+          isGenerating={isGenerating} 
+          resultImage={resultImage} 
+          onOpenPreview={() => setIsPreviewOpen(true)}
+          lightingReference={lightingReference}
+          setLightingReference={setLightingReference}
+        />
       </main>
 
       <footer className="h-8 border-t border-[#222] bg-[#0a0a0a] flex items-center justify-between px-4 z-20">
