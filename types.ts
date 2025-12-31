@@ -16,6 +16,7 @@ export interface SceneObject {
   scale: [number, number, number];
   color?: string;
   type: 'local' | 'cloud' | 'primitive';
+  format?: 'glb' | 'gltf' | 'obj'; // Added to support multiple formats
   primitiveType?: PrimitiveType;
   groupId?: string; // Reference to a SceneGroup
   referenceImageUrl?: string; // AI Reference Image

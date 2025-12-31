@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, Cloud, Package, Trash2, Search, Loader2, AlertCircle, Edit2, 
@@ -35,7 +34,7 @@ interface AssetPanelProps {
   onDeletePreset: (id: string) => void;
 }
 
-const KHronos_BASE = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0";
+const KHronos_BASE = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0";
 
 const MOCK_CLOUD_ASSETS: CloudAsset[] = [
   { uid: 'c1', name: 'Vintage Camera', thumbnail: `${KHronos_BASE}/AntiqueCamera/screenshot/screenshot.png`, downloadUrl: `${KHronos_BASE}/AntiqueCamera/glTF-Binary/AntiqueCamera.glb` },
@@ -247,7 +246,14 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
             <div className="grid grid-cols-2 gap-2">
               {filteredCloud.map((asset) => (
                 <button key={asset.uid} onClick={() => onAddCloud(asset)} className="group relative aspect-square bg-[#0a0a0a] border border-[#222] rounded-md overflow-hidden hover:border-blue-500 transition-all">
-                  <img src={asset.thumbnail} alt={asset.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
+                  <img 
+                    src={asset.thumbnail} 
+                    alt={asset.name} 
+                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = `https://placehold.co/400x400/151515/FFFFFF?text=${encodeURIComponent(asset.name.substring(0, 15))}`;
+                    }}
+                  />
                   <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-black/80"><p className="text-[9px] text-white truncate text-center">{asset.name}</p></div>
                 </button>
               ))}
@@ -315,8 +321,8 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
               <div className="border-2 border-dashed border-[#222] rounded-lg p-6 text-center hover:border-blue-500/50 transition-colors">
                 <Upload className="text-gray-600 mx-auto mb-2" size={24} />
                 <label className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-4 py-2 rounded-full cursor-pointer inline-block uppercase shadow-lg shadow-blue-900/20">
-                  Select .GLB File
-                  <input type="file" className="hidden" accept=".glb" onChange={(e) => e.target.files?.[0] && onAddLocal(e.target.files[0])} />
+                  Select 3D File (.glb, .gltf, .obj)
+                  <input type="file" className="hidden" accept=".glb,.gltf,.obj" onChange={(e) => e.target.files?.[0] && onAddLocal(e.target.files[0])} />
                 </label>
               </div>
             </div>
@@ -342,7 +348,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                         <p className="text-[10px] font-bold text-gray-300 uppercase truncate">{obj.name}</p>
                         <p className="text-[8px] text-gray-600 font-black uppercase flex items-center gap-1">
                           {obj.referenceImageUrl ? <LinkIcon size={8} className="text-blue-500" /> : <HardDrive size={8} />}
-                          {obj.referenceImageUrl ? 'Ref Attached' : 'Local Data'}
+                          {obj.referenceImageUrl ? 'Ref Attached' : `${obj.format?.toUpperCase() || 'LOCAL'} Data`}
                         </p>
                       </div>
                     </div>
@@ -464,12 +470,6 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
             {(selectedObject || selectedGroup) && (
               <div className="pt-6 border-t border-[#222] space-y-6">
                 
-                {/* Transform Inspector */}
-                {/* If it is a group, we can still show a transform inspector but it acts as a tool to move the group, not read properties. 
-                    Actually, we don't store group position. So we might hide the input fields for Groups or make them relative. 
-                    For now, keep it for Objects only as per prompt requirements, but Viewport will handle group visual transform. 
-                    The user asked for 'Transform Inspector' on objects previously. I'll show a message for groups. */}
-                
                 {selectedObject && (
                   <>
                   <div className="space-y-4">
@@ -544,7 +544,6 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
 
         {activeTab === 'env' && (
           <div className="space-y-6 pb-20">
-             {/* ... (no changes in env tab) */}
             <div>
               <label className="block text-[10px] text-gray-500 uppercase font-black tracking-widest mb-2">Grid & Snapping</label>
               <div className="bg-[#0a0a0a] p-4 rounded-xl border border-[#222]">

@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { SceneObject, SceneGroup, CloudAsset, TransformMode, BackgroundSettings, PrimitiveType, CameraPreset } from './types';
 import AssetPanel from './components/AssetPanel';
@@ -6,7 +5,7 @@ import AIPanel from './components/AIPanel';
 import Viewport from './components/Viewport';
 import PreviewOverlay from './components/PreviewOverlay';
 import { processSceneToImage, sanitizeModelUrl } from './services/geminiService';
-import { Layers, Move, RotateCw, Maximize, Magnet, ClipboardCheck, Undo2, Redo2 } from 'lucide-react';
+import { Layers, Move, RotateCw, Maximize, Magnet, ClipboardCheck, Undo2, Redo2, Download, Upload, FileJson, FilePlus, AlertTriangle, X } from 'lucide-react';
 
 const DEFAULT_CAMERA_PRESETS: CameraPreset[] = [
   { id: 'cam-iso', name: 'Isometric (45°)', position: [10, 10, 10], target: [0, 0, 0], isSystem: true },
@@ -53,6 +52,9 @@ const App: React.FC = () => {
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  
+  // Modal State
+  const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -98,6 +100,9 @@ const App: React.FC = () => {
   const handleAddLocal = useCallback((file: File) => {
     recordHistory(objects, groups);
     const url = URL.createObjectURL(file);
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    const format = (ext === 'obj' ? 'obj' : (ext === 'gltf' ? 'gltf' : 'glb'));
+
     const newObj: SceneObject = {
       id: Math.random().toString(36).substr(2, 9),
       name: file.name.split('.')[0],
@@ -105,7 +110,8 @@ const App: React.FC = () => {
       position: [0, 0, 0],
       rotation: [0, 0, 0],
       scale: [1, 1, 1],
-      type: 'local'
+      type: 'local',
+      format: format as any
     };
     setObjects((prev) => [...prev, newObj]);
     setSelectedId(newObj.id);
@@ -120,7 +126,8 @@ const App: React.FC = () => {
       position: [0, 0, 0],
       rotation: [0, 0, 0],
       scale: [1, 1, 1],
-      type: 'cloud'
+      type: 'cloud',
+      format: 'glb'
     };
     setObjects((prev) => [...prev, newObj]);
     setSelectedId(newObj.id);
@@ -177,6 +184,133 @@ const App: React.FC = () => {
     setSelectedId(newObj.id);
     showStatus("PASTED: " + newObj.name);
   }, [clipboard, objects, groups, recordHistory]);
+
+  // Project Management
+  const resetProject = useCallback(() => {
+    setObjects([]);
+    setGroups([]);
+    setSelectedId(null);
+    setHistory({ past: [], future: [] });
+    setBgSettings({ url: null, position: [0, 0, -5], scale: 10, opacity: 1 });
+    setCameraPresets(DEFAULT_CAMERA_PRESETS);
+    setPrompt('');
+    setStrength(0.5);
+    setResultImage(null);
+    setSourceImage(null);
+    showStatus("NEW PROJECT STARTED");
+    setIsNewProjectDialogOpen(false);
+  }, []);
+
+  const handleNewProject = useCallback(() => {
+    if (objects.length > 0) {
+      setIsNewProjectDialogOpen(true);
+    } else {
+      resetProject();
+    }
+  }, [objects, resetProject]);
+
+  const handleSaveProject = async () => {
+    showStatus("PACKING PROJECT...");
+    
+    try {
+      // Helper to convert blob URL to base64
+      const blobToDataURL = (blob: Blob): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      };
+
+      // Inline local object assets
+      const objectsToSave = await Promise.all(objects.map(async (obj) => {
+        if (obj.type === 'local' && obj.url.startsWith('blob:')) {
+          try {
+            const response = await fetch(obj.url);
+            const blob = await response.blob();
+            const dataUrl = await blobToDataURL(blob);
+            return { ...obj, url: dataUrl };
+          } catch (e) {
+            console.warn(`Failed to inline asset ${obj.name}`, e);
+            return obj;
+          }
+        }
+        return obj;
+      }));
+
+      // Inline background if local
+      let bgSettingsToSave = { ...bgSettings };
+      if (bgSettings.url && bgSettings.url.startsWith('blob:')) {
+         try {
+            const response = await fetch(bgSettings.url);
+            const blob = await response.blob();
+            bgSettingsToSave.url = await blobToDataURL(blob);
+         } catch (e) {
+             console.warn("Failed to inline background", e);
+         }
+      }
+
+      const projectData = {
+        version: 1,
+        timestamp: Date.now(),
+        objects: objectsToSave,
+        groups,
+        bgSettings: bgSettingsToSave,
+        cameraPresets,
+        aiSettings: { prompt, strength }
+      };
+
+      const jsonString = JSON.stringify(projectData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `gemini-scene-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      showStatus("PROJECT SAVED");
+    } catch (error) {
+      console.error("Save failed", error);
+      showStatus("SAVE FAILED");
+    }
+  };
+
+  const handleLoadProject = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    showStatus("LOADING PROJECT...");
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        
+        if (!Array.isArray(json.objects)) throw new Error("Invalid project file");
+
+        setObjects(json.objects);
+        setGroups(json.groups || []);
+        if (json.bgSettings) setBgSettings(json.bgSettings);
+        if (json.cameraPresets) setCameraPresets(json.cameraPresets);
+        if (json.aiSettings) {
+          setPrompt(json.aiSettings.prompt || '');
+          setStrength(json.aiSettings.strength ?? 0.5);
+        }
+        
+        setHistory({ past: [], future: [] });
+        setSelectedId(null);
+        showStatus("PROJECT LOADED");
+      } catch (err) {
+        console.error("Load failed", err);
+        showStatus("INVALID FILE");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -260,8 +394,6 @@ const App: React.FC = () => {
   const handleSaveCameraPreset = useCallback((name: string) => {
     if ((window as any).captureCurrentView) {
       (window as any).captureCurrentView();
-      // Viewport will call back to onSetCapturedView
-      // We'll store the name temporarily in a ref to finish the save
       (window as any).__tempPresetName = name;
     }
   }, []);
@@ -344,6 +476,15 @@ const App: React.FC = () => {
             <button onClick={handleRedo} disabled={history.future.length === 0} className={`p-2 rounded transition-all ${history.future.length > 0 ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 cursor-not-allowed'}`} title="Redo (Ctrl+Y)"><Redo2 size={16} /></button>
           </div>
 
+          <div className="flex items-center gap-1 bg-black/30 p-1 rounded-md border border-white/5">
+             <button onClick={handleNewProject} className="p-2 text-gray-500 hover:text-white transition-colors" title="New Project"><FilePlus size={16} /></button>
+             <button onClick={handleSaveProject} className="p-2 text-gray-500 hover:text-white transition-colors" title="Save Project"><Download size={16} /></button>
+             <label className="p-2 text-gray-500 hover:text-white transition-colors cursor-pointer" title="Load Project">
+                <Upload size={16} />
+                <input type="file" className="hidden" accept=".json" onChange={handleLoadProject} />
+             </label>
+          </div>
+
           <button onClick={() => setSnapEnabled(!snapEnabled)} className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-[10px] font-bold uppercase tracking-widest ${snapEnabled ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30' : 'text-gray-500 hover:text-gray-300 border border-transparent'}`}>
             <Magnet size={14} className={snapEnabled ? "animate-pulse" : ""} />
             {snapEnabled ? 'Snap ON' : 'Snap OFF'}
@@ -413,6 +554,42 @@ const App: React.FC = () => {
           <span className="text-[9px] text-blue-500 font-mono font-bold uppercase tracking-widest">Neural Pipeline</span>
         </div>
       </footer>
+
+      {/* New Project Confirmation Modal */}
+      {isNewProjectDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#111] border border-[#333] p-6 rounded-xl max-w-sm w-full shadow-2xl relative">
+            <button onClick={() => setIsNewProjectDialogOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
+              <X size={16} />
+            </button>
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="p-3 bg-yellow-500/10 rounded-full text-yellow-500 border border-yellow-500/20">
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-1">Start New Project?</h3>
+                <p className="text-[10px] text-gray-400 leading-relaxed">
+                  All unsaved progress will be permanently lost. Make sure you have exported your project JSON if you want to save it.
+                </p>
+              </div>
+              <div className="flex gap-2 w-full mt-2">
+                <button 
+                  onClick={() => setIsNewProjectDialogOpen(false)}
+                  className="flex-1 py-2.5 rounded-lg border border-[#333] hover:bg-[#222] text-[10px] font-bold text-gray-300 uppercase tracking-widest transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={resetProject}
+                  className="flex-1 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-[10px] font-bold text-white uppercase tracking-widest transition-colors shadow-lg shadow-red-900/20"
+                >
+                  Start New
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isPreviewOpen && resultImage && (
         <PreviewOverlay sourceImage={sourceImage} resultImage={resultImage} prompt={prompt} strength={strength} onClose={() => setIsPreviewOpen(false)} onSetAsBackdrop={() => handleSetAsBackdrop(resultImage)} />

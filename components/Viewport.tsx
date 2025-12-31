@@ -1,4 +1,3 @@
-
 import React, { Suspense, useRef, useMemo, useState, useEffect, useCallback } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { 
@@ -18,6 +17,7 @@ import {
 } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader';
 import { SceneObject, SceneGroup, TransformMode, BackgroundSettings, CameraPreset } from '../types';
@@ -26,7 +26,7 @@ import { RefreshCw } from 'lucide-react';
 // Shared loaders
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.5/');
-const loadingManager = new THREE.LoadingManager();
+const globalLoadingManager = new THREE.LoadingManager();
 
 const Background: React.FC<{ settings: BackgroundSettings }> = ({ settings }) => {
   if (!settings.url) return null;
@@ -74,6 +74,50 @@ const CameraManager: React.FC<{
   return null;
 };
 
+// Helper to sanitize geometry
+const cleanSceneGeometry = (scene: THREE.Object3D): boolean => {
+  const invalidObjects: THREE.Object3D[] = [];
+  
+  scene.traverse((obj: any) => {
+    // Check geometry for any object type that has it (Mesh, Line, Points, etc.)
+    if (obj.geometry && obj.geometry.attributes.position) {
+      const positions = obj.geometry.attributes.position.array;
+      let isInvalid = false;
+      
+      // Check for NaN or Infinity values in position attribute
+      for (let i = 0; i < positions.length; i++) {
+        const val = positions[i];
+        if (isNaN(val) || !isFinite(val)) {
+          isInvalid = true;
+          break;
+        }
+      }
+
+      if (isInvalid) {
+        invalidObjects.push(obj);
+      }
+    }
+  });
+
+  if (invalidObjects.length === 0) return true;
+
+  // If the scene root itself is invalid, signal failure
+  if (invalidObjects.includes(scene)) {
+      console.warn(`Root object "${scene.name}" has invalid geometry. Discarding.`);
+      return false;
+  }
+
+  // Remove invalid children
+  invalidObjects.forEach(obj => {
+    if (obj.parent) {
+      obj.parent.remove(obj);
+      console.warn(`Removed object "${obj.name}" due to invalid (NaN/Infinity) geometry data.`);
+    }
+  });
+  
+  return true;
+};
+
 interface ModelProps {
   obj: SceneObject;
   onSelect: (id: string) => void;
@@ -85,10 +129,10 @@ const Model: React.FC<ModelProps> = ({
 }) => {
   const { gl } = useThree();
   const [loading, setLoading] = useState(obj.type !== 'primitive');
-  const [loadedGltf, setLoadedGltf] = useState<any>(null);
+  const [loadedScene, setLoadedScene] = useState<THREE.Group | null>(null);
   
   const ktx2Loader = useMemo(() => {
-    const loader = new KTX2Loader(loadingManager);
+    const loader = new KTX2Loader(globalLoadingManager);
     loader.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/libs/basis/');
     loader.detectSupport(gl);
     return loader;
@@ -100,20 +144,45 @@ const Model: React.FC<ModelProps> = ({
       return;
     }
     setLoading(true);
-    const loader = new GLTFLoader(loadingManager);
-    loader.setDRACOLoader(dracoLoader);
-    loader.setKTX2Loader(ktx2Loader);
+
     let isMounted = true;
-    loader.load(obj.url, (gltf) => {
-      if (isMounted) {
-        setLoadedGltf(gltf);
-        setLoading(false);
-      }
-    }, undefined, () => {
-      if (isMounted) setLoading(false);
-    });
+
+    // Use a local manager to isolate errors (like missing textures in local files)
+    const manager = new THREE.LoadingManager();
+    manager.onError = (url) => {
+        // Suppress console spam for expected texture failures in single-file imports
+        if (isMounted) console.debug(`Suppressing texture load error for ${obj.name}: ${url}`);
+    };
+
+    const onLoad = (result: any) => {
+        if (isMounted) {
+             // Normalize result: GLTF has .scene, OBJ is the Group itself
+            const scene = result.scene ? result.scene : result;
+            setLoadedScene(scene);
+            setLoading(false);
+        }
+    };
+    
+    const onError = (e: any) => {
+        if (isMounted) {
+            console.warn(`Failed to load model ${obj.name}:`, e);
+            setLoading(false);
+        }
+    };
+
+    if (obj.format === 'obj') {
+        const loader = new OBJLoader(manager);
+        loader.load(obj.url, onLoad, undefined, onError);
+    } else {
+        const loader = new GLTFLoader(manager);
+        loader.setCrossOrigin('anonymous');
+        loader.setDRACOLoader(dracoLoader);
+        loader.setKTX2Loader(ktx2Loader);
+        loader.load(obj.url, onLoad, undefined, onError);
+    }
+
     return () => { isMounted = false; };
-  }, [obj.url, ktx2Loader, obj.type]);
+  }, [obj.url, ktx2Loader, obj.type, obj.format, obj.name]);
 
   const groupRef = useRef<THREE.Group>(null);
   const contentRef = useRef<THREE.Group>(null);
@@ -126,17 +195,33 @@ const Model: React.FC<ModelProps> = ({
   }, [obj.id, onRegisterRef, loading]);
 
   const processedScene = useMemo(() => {
-    if (obj.type === 'primitive' || !loadedGltf) return null;
-    const clone = loadedGltf.scene.clone(true);
+    if (obj.type === 'primitive' || !loadedScene) return null;
+    const clone = loadedScene.clone(true);
+    
+    // 1. Sanitize geometry to prevent NaN errors in bounding box calculations
+    const isValid = cleanSceneGeometry(clone);
+    if (!isValid) return null;
+
+    // Normalize logic with NaN checks
     const box = new THREE.Box3().setFromObject(clone);
-    const center = new THREE.Vector3();
-    const size = new THREE.Vector3();
-    box.getCenter(center);
-    box.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scaleFactor = maxDim > 0 ? (1 / maxDim) : 1;
-    clone.scale.setScalar(scaleFactor);
-    clone.position.copy(center).multiplyScalar(-scaleFactor);
+    
+    // Only attempt normalization if the box is valid and non-empty
+    if (!box.isEmpty()) {
+      const center = new THREE.Vector3();
+      const size = new THREE.Vector3();
+      box.getCenter(center);
+      box.getSize(size);
+      
+      const maxDim = Math.max(size.x, size.y, size.z);
+      
+      // Ensure we don't divide by zero or apply NaN values
+      if (maxDim > 0 && isFinite(maxDim) && !isNaN(center.x)) {
+        const scaleFactor = 1 / maxDim;
+        clone.scale.setScalar(scaleFactor);
+        clone.position.copy(center).multiplyScalar(-scaleFactor);
+      }
+    }
+
     clone.traverse((o: any) => {
       if (o.isMesh) {
         o.castShadow = true;
@@ -150,7 +235,7 @@ const Model: React.FC<ModelProps> = ({
       }
     });
     return clone;
-  }, [loadedGltf, obj.color, obj.type]);
+  }, [loadedScene, obj.color, obj.type]);
 
   const renderPrimitive = () => {
     const material = <meshStandardMaterial color={obj.color || '#3b82f6'} />;
@@ -264,18 +349,20 @@ const Viewport: React.FC<ViewportProps> = ({
         }
       });
       
-      if (hasObjects) {
+      if (hasObjects && !box.isEmpty()) {
         const center = new THREE.Vector3();
         box.getCenter(center);
         
-        // 2. Move Pivot to Center (resetting rotation/scale to neutral)
-        pivotRef.current.position.copy(center);
-        pivotRef.current.rotation.set(0,0,0);
-        pivotRef.current.scale.set(1,1,1);
-        pivotRef.current.updateMatrixWorld();
-        
-        // 3. Set Pivot as the TransformControl target
-        setActiveTarget(pivotRef.current);
+        if (!isNaN(center.x)) {
+           // 2. Move Pivot to Center (resetting rotation/scale to neutral)
+           pivotRef.current.position.copy(center);
+           pivotRef.current.rotation.set(0,0,0);
+           pivotRef.current.scale.set(1,1,1);
+           pivotRef.current.updateMatrixWorld();
+           
+           // 3. Set Pivot as the TransformControl target
+           setActiveTarget(pivotRef.current);
+        }
       } else {
         // Empty group, just put pivot at origin
         pivotRef.current.position.set(0,0,0);
