@@ -6,7 +6,8 @@ import {
   Square, Cone as ConeIcon, Layers as LayersIcon, FolderPlus, Folder, ChevronDown, ChevronRight,
   MoveHorizontal, MoveVertical, Maximize, Ghost, Camera, CameraOff, Save, Navigation, Link as LinkIcon,
   MousePointer2, HardDrive, Move, RotateCw, BoxSelect, Triangle, GripVertical, FolderOpen,
-  TriangleRight, Slice, Lock, Unlock, Eye, EyeOff // Added Eye/EyeOff icons
+  TriangleRight, Slice, Lock, Unlock, Eye, EyeOff,
+  Diamond, Hexagon, Sunset, Battery, CircleDot, Dna // Changed BatteryVertical to Battery
 } from 'lucide-react';
 import { SceneObject, SceneGroup, CloudAsset, BackgroundSettings, PrimitiveType, CameraPreset } from '../types';
 import { search3DModels } from '../services/geminiService';
@@ -55,7 +56,13 @@ const PRIMITIVES: { type: PrimitiveType, icon: React.ReactNode, name: string }[]
   { type: 'torus', icon: <LayersIcon size={16} />, name: 'Torus' },
   { type: 'pyramid', icon: <Triangle size={16} />, name: 'Pyramid' },
   { type: 'wedge', icon: <TriangleRight size={16} />, name: 'Wedge' },
-  { type: 'oblique-wedge', icon: <Slice size={16} />, name: 'Oblique Wedge' },
+  { type: 'oblique-wedge', icon: <Slice size={16} />, name: 'Oblique' },
+  { type: 'tube', icon: <CircleDot size={16} />, name: 'Tube' },
+  { type: 'capsule', icon: <Battery size={16} className="rotate-90" />, name: 'Capsule' },
+  { type: 'hemisphere', icon: <Sunset size={16} />, name: 'Hemisphere' },
+  { type: 'octahedron', icon: <Diamond size={16} />, name: 'Octahedron' },
+  { type: 'dodecahedron', icon: <Hexagon size={16} />, name: 'Dodecahedron' },
+  { type: 'helix', icon: <Dna size={16} />, name: 'Helix' },
 ];
 
 const AssetPanel: React.FC<AssetPanelProps> = ({ 

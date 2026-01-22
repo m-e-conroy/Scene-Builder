@@ -14,7 +14,11 @@ import {
   Plane,
   Cone,
   Torus,
-  Extrude
+  Extrude,
+  Capsule,
+  Octahedron,
+  Dodecahedron,
+  Tube
 } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
@@ -165,6 +169,47 @@ const ObliqueWedge: React.FC<{ color: string, shadowProps: any }> = ({ color, sh
   );
 };
 
+// Custom Pipe (Tube) Geometry using ExtrudeGeometry with a hole
+const Pipe: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+    const geometry = useMemo(() => {
+        const shape = new THREE.Shape();
+        shape.absarc(0, 0, 0.5, 0, Math.PI * 2, false);
+        const hole = new THREE.Path();
+        hole.absarc(0, 0, 0.35, 0, Math.PI * 2, true);
+        shape.holes.push(hole);
+        return new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false, curveSegments: 32 });
+    }, []);
+
+    // Center and orient to match Cylinder (upright Y)
+    return (
+        <mesh geometry={geometry} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.5, 0.5]} {...shadowProps}>
+           <meshStandardMaterial color={color} />
+        </mesh>
+    );
+};
+
+// Custom Helix Geometry using Tube
+const Helix: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+    const path = useMemo(() => {
+        const points = [];
+        for (let i = 0; i <= 100; i++) {
+            const t = i / 100;
+            const angle = 2 * Math.PI * 3 * t; // 3 turns
+            const x = Math.cos(angle) * 0.3;
+            const z = Math.sin(angle) * 0.3;
+            const y = (t - 0.5) * 1; // Height 1, centered
+            points.push(new THREE.Vector3(x, y, z));
+        }
+        return new THREE.CatmullRomCurve3(points);
+    }, []);
+
+    return (
+        <Tube args={[path, 64, 0.08, 12, false]} {...shadowProps}>
+            <meshStandardMaterial color={color} />
+        </Tube>
+    );
+};
+
 interface ModelProps {
   obj: SceneObject;
   isLocked: boolean;
@@ -306,6 +351,12 @@ const Model: React.FC<ModelProps> = ({
       case 'pyramid': return <Cone args={[0.7, 1, 4]} {...shadowProps} {...interactionProps}>{material}</Cone>;
       case 'wedge': return <Wedge color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
       case 'oblique-wedge': return <ObliqueWedge color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
+      case 'tube': return <Pipe color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
+      case 'capsule': return <Capsule args={[0.3, 1, 4, 16]} {...shadowProps} {...interactionProps}>{material}</Capsule>;
+      case 'hemisphere': return <Sphere args={[0.5, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2]} {...shadowProps} {...interactionProps}>{material}</Sphere>;
+      case 'octahedron': return <Octahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Octahedron>;
+      case 'dodecahedron': return <Dodecahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Dodecahedron>;
+      case 'helix': return <Helix color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
       default: return <Box args={[1, 1, 1]} {...shadowProps} {...interactionProps}>{material}</Box>;
     }
   };
