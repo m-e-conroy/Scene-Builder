@@ -7,7 +7,8 @@ import {
   MoveHorizontal, MoveVertical, Maximize, Ghost, Camera, CameraOff, Save, Navigation, Link as LinkIcon,
   MousePointer2, HardDrive, Move, RotateCw, BoxSelect, Triangle, GripVertical, FolderOpen,
   TriangleRight, Slice, Lock, Unlock, Eye, EyeOff,
-  Diamond, Hexagon, Sunset, Battery, CircleDot, Dna // Changed BatteryVertical to Battery
+  Diamond, Hexagon, Sunset, Battery, CircleDot, Dna, 
+  Shapes, Star, Gem, Filter, Tent // New Icons
 } from 'lucide-react';
 import { SceneObject, SceneGroup, CloudAsset, BackgroundSettings, PrimitiveType, CameraPreset } from '../types';
 import { search3DModels } from '../services/geminiService';
@@ -63,6 +64,11 @@ const PRIMITIVES: { type: PrimitiveType, icon: React.ReactNode, name: string }[]
   { type: 'octahedron', icon: <Diamond size={16} />, name: 'Octahedron' },
   { type: 'dodecahedron', icon: <Hexagon size={16} />, name: 'Dodecahedron' },
   { type: 'helix', icon: <Dna size={16} />, name: 'Helix' },
+  { type: 'polyhedron', icon: <Shapes size={16} />, name: 'Polyhedron' },
+  { type: 'pentagrammic-prism', icon: <Star size={16} />, name: 'Star Prism' },
+  { type: 'octagonal-pyramid', icon: <Tent size={16} />, name: 'Oct-Pyramid' },
+  { type: 'tetrahedron', icon: <Gem size={16} />, name: 'Tetrahedron' },
+  { type: 'conical-frustum', icon: <Filter size={16} />, name: 'Frustum' },
 ];
 
 const AssetPanel: React.FC<AssetPanelProps> = ({ 

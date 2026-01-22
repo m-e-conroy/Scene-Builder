@@ -1,5 +1,5 @@
 
-export type PrimitiveType = 'box' | 'sphere' | 'cylinder' | 'plane' | 'cone' | 'torus' | 'pyramid' | 'wedge' | 'oblique-wedge' | 'tube' | 'capsule' | 'hemisphere' | 'octahedron' | 'dodecahedron' | 'helix';
+export type PrimitiveType = 'box' | 'sphere' | 'cylinder' | 'plane' | 'cone' | 'torus' | 'pyramid' | 'wedge' | 'oblique-wedge' | 'tube' | 'capsule' | 'hemisphere' | 'octahedron' | 'dodecahedron' | 'helix' | 'polyhedron' | 'pentagrammic-prism' | 'octagonal-pyramid' | 'tetrahedron' | 'conical-frustum';
 
 export interface SceneGroup {
   id: string;

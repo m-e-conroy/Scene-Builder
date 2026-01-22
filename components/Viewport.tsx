@@ -18,7 +18,9 @@ import {
   Capsule,
   Octahedron,
   Dodecahedron,
-  Tube
+  Tube,
+  Icosahedron,
+  Tetrahedron
 } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
@@ -164,6 +166,39 @@ const ObliqueWedge: React.FC<{ color: string, shadowProps: any }> = ({ color, sh
 
   return (
      <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[-0.5, -0.5, -0.5]}>
+      <meshStandardMaterial color={color} />
+    </Extrude>
+  );
+};
+
+// Custom Pentagrammic Prism (Star Prism)
+const PentagrammicPrism: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    const points = 5;
+    const outerRadius = 0.5;
+    const innerRadius = 0.25;
+    for (let i = 0; i < points * 2; i++) {
+        const r = i % 2 === 0 ? outerRadius : innerRadius;
+        const a = (i / points) * Math.PI;
+        // Rotate -90 degrees to point up
+        const x = Math.cos(a + Math.PI / 2 * 3) * r;
+        const y = Math.sin(a + Math.PI / 2 * 3) * r;
+        if (i === 0) s.moveTo(x, y);
+        else s.lineTo(x, y);
+    }
+    s.closePath();
+    return s;
+  }, []);
+
+  const extrudeSettings = useMemo(() => ({
+    depth: 1,
+    bevelEnabled: false
+  }), []);
+
+  // Center the geometry
+  return (
+    <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[0, 0, -0.5]}>
       <meshStandardMaterial color={color} />
     </Extrude>
   );
@@ -357,6 +392,11 @@ const Model: React.FC<ModelProps> = ({
       case 'octahedron': return <Octahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Octahedron>;
       case 'dodecahedron': return <Dodecahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Dodecahedron>;
       case 'helix': return <Helix color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
+      case 'polyhedron': return <Icosahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Icosahedron>;
+      case 'pentagrammic-prism': return <PentagrammicPrism color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
+      case 'octagonal-pyramid': return <Cylinder args={[0, 0.5, 1, 8]} {...shadowProps} {...interactionProps}>{material}</Cylinder>;
+      case 'tetrahedron': return <Tetrahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Tetrahedron>;
+      case 'conical-frustum': return <Cylinder args={[0.25, 0.5, 1, 32]} {...shadowProps} {...interactionProps}>{material}</Cylinder>;
       default: return <Box args={[1, 1, 1]} {...shadowProps} {...interactionProps}>{material}</Box>;
     }
   };
