@@ -5,6 +5,7 @@ export interface SceneGroup {
   id: string;
   name: string;
   isOpen: boolean;
+  locked?: boolean;
 }
 
 export interface SceneObject {
@@ -20,6 +21,7 @@ export interface SceneObject {
   primitiveType?: PrimitiveType;
   groupId?: string; // Reference to a SceneGroup
   referenceImageUrl?: string; // AI Reference Image
+  locked?: boolean;
 }
 
 export interface CloudAsset {

@@ -167,12 +167,13 @@ const ObliqueWedge: React.FC<{ color: string, shadowProps: any }> = ({ color, sh
 
 interface ModelProps {
   obj: SceneObject;
+  isLocked: boolean;
   onSelect: (id: string) => void;
   onRegisterRef: (id: string, ref: THREE.Object3D | null) => void;
 }
 
 const Model: React.FC<ModelProps> = ({ 
-  obj, onSelect, onRegisterRef
+  obj, isLocked, onSelect, onRegisterRef
 }) => {
   const { gl } = useThree();
   const [loading, setLoading] = useState(obj.type !== 'primitive');
@@ -279,27 +280,32 @@ const Model: React.FC<ModelProps> = ({
           if (obj.color && cm.color) cm.color.set(obj.color);
           o.material = cm;
         }
+        // Locking Logic: Disable raycasting if locked
+        if (isLocked) {
+          o.raycast = () => null;
+        }
       }
     });
     return clone;
-  }, [loadedScene, obj.color, obj.type]);
+  }, [loadedScene, obj.color, obj.type, isLocked]);
 
   const renderPrimitive = () => {
     const color = obj.color || '#3b82f6';
     const material = <meshStandardMaterial color={color} />;
     const shadowProps = { castShadow: true, receiveShadow: true };
+    const interactionProps = { raycast: isLocked ? () => null : undefined };
 
     switch (obj.primitiveType) {
-      case 'box': return <Box args={[1, 1, 1]} {...shadowProps}>{material}</Box>;
-      case 'sphere': return <Sphere args={[0.5, 32, 32]} {...shadowProps}>{material}</Sphere>;
-      case 'cylinder': return <Cylinder args={[0.5, 0.5, 1, 32]} {...shadowProps}>{material}</Cylinder>;
-      case 'plane': return <Plane args={[1, 1]} {...shadowProps}>{material}</Plane>;
-      case 'cone': return <Cone args={[0.5, 1, 32]} {...shadowProps}>{material}</Cone>;
-      case 'torus': return <Torus args={[0.4, 0.1, 16, 100]} {...shadowProps}>{material}</Torus>;
-      case 'pyramid': return <Cone args={[0.7, 1, 4]} {...shadowProps}>{material}</Cone>;
-      case 'wedge': return <Wedge color={color} shadowProps={shadowProps} />;
-      case 'oblique-wedge': return <ObliqueWedge color={color} shadowProps={shadowProps} />;
-      default: return <Box args={[1, 1, 1]} {...shadowProps}>{material}</Box>;
+      case 'box': return <Box args={[1, 1, 1]} {...shadowProps} {...interactionProps}>{material}</Box>;
+      case 'sphere': return <Sphere args={[0.5, 32, 32]} {...shadowProps} {...interactionProps}>{material}</Sphere>;
+      case 'cylinder': return <Cylinder args={[0.5, 0.5, 1, 32]} {...shadowProps} {...interactionProps}>{material}</Cylinder>;
+      case 'plane': return <Plane args={[1, 1]} {...shadowProps} {...interactionProps}>{material}</Plane>;
+      case 'cone': return <Cone args={[0.5, 1, 32]} {...shadowProps} {...interactionProps}>{material}</Cone>;
+      case 'torus': return <Torus args={[0.4, 0.1, 16, 100]} {...shadowProps} {...interactionProps}>{material}</Torus>;
+      case 'pyramid': return <Cone args={[0.7, 1, 4]} {...shadowProps} {...interactionProps}>{material}</Cone>;
+      case 'wedge': return <Wedge color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
+      case 'oblique-wedge': return <ObliqueWedge color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
+      default: return <Box args={[1, 1, 1]} {...shadowProps} {...interactionProps}>{material}</Box>;
     }
   };
 
@@ -318,7 +324,11 @@ const Model: React.FC<ModelProps> = ({
 
   return (
     <group ref={groupRef} position={obj.position} rotation={obj.rotation} scale={obj.scale}>
-      <group ref={contentRef} onPointerDown={(e) => { e.stopPropagation(); onSelect(obj.id); }}>
+      <group ref={contentRef} onPointerDown={(e) => { 
+        if (isLocked) return;
+        e.stopPropagation(); 
+        onSelect(obj.id); 
+      }}>
         {obj.type === 'primitive' ? renderPrimitive() : (processedScene && <primitive object={processedScene} />)}
       </group>
     </group>
@@ -362,6 +372,21 @@ const Viewport: React.FC<ViewportProps> = ({
 
   // Store initial offsets for group transformation
   const dragOffsets = useRef<Map<string, THREE.Matrix4>>(new Map());
+
+  // Helper to determine if an object is locked (directly or via group)
+  const isObjectLocked = useCallback((obj: SceneObject) => {
+    return !!(obj.locked || (obj.groupId && groups.find(g => g.id === obj.groupId)?.locked));
+  }, [groups]);
+
+  // Check if current selection is locked
+  const isSelectionLocked = useMemo(() => {
+    if (!selectedId) return false;
+    const group = groups.find(g => g.id === selectedId);
+    if (group) return !!group.locked;
+    const obj = objects.find(o => o.id === selectedId);
+    if (obj) return isObjectLocked(obj);
+    return false;
+  }, [selectedId, groups, objects, isObjectLocked]);
 
   // Updated Registration Logic: Checks if the incoming model is the currently 
   // selected one. If so, attaches it immediately.
@@ -560,7 +585,8 @@ const Viewport: React.FC<ViewportProps> = ({
             {objects.map((obj) => (
               <Model 
                 key={obj.id} 
-                obj={obj} 
+                obj={obj}
+                isLocked={isObjectLocked(obj)} 
                 onSelect={onSelect} 
                 onRegisterRef={registerModelRef}
               />
@@ -570,7 +596,7 @@ const Viewport: React.FC<ViewportProps> = ({
           {/* Invisible Pivot Group used as a driver for transformations */}
           <group ref={pivotRef} />
 
-          {activeTarget && (
+          {activeTarget && !isSelectionLocked && (
             <>
               <TransformControls 
                 key={activeTarget.uuid}

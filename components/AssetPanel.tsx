@@ -6,7 +6,7 @@ import {
   Square, Cone as ConeIcon, Layers as LayersIcon, FolderPlus, Folder, ChevronDown, ChevronRight,
   MoveHorizontal, MoveVertical, Maximize, Ghost, Camera, CameraOff, Save, Navigation, Link as LinkIcon,
   MousePointer2, HardDrive, Move, RotateCw, BoxSelect, Triangle, GripVertical, FolderOpen,
-  TriangleRight, Slice // Imported generic icons for new shapes
+  TriangleRight, Slice, Lock, Unlock // Added Lock icons
 } from 'lucide-react';
 import { SceneObject, SceneGroup, CloudAsset, BackgroundSettings, PrimitiveType, CameraPreset } from '../types';
 import { search3DModels } from '../services/geminiService';
@@ -25,7 +25,7 @@ interface AssetPanelProps {
   onRemove: (id: string) => void;
   onRemoveGroup: (id: string) => void;
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   onUpdate: (id: string, updates: Partial<SceneObject>) => void;
   onUpdateGroup: (id: string, updates: Partial<SceneGroup>) => void;
   onAddGroup: () => void;
@@ -113,6 +113,22 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const toggleLock = (e: React.MouseEvent, id: string, currentLocked: boolean, isGroup: boolean) => {
+    e.stopPropagation();
+    const newLocked = !currentLocked;
+    
+    if (isGroup) {
+       onUpdateGroup(id, { locked: newLocked });
+    } else {
+       onUpdate(id, { locked: newLocked });
+    }
+
+    // If we are locking the currently selected item, deselect it
+    if (newLocked && selectedId === id) {
+       onSelect(null);
+    }
+  };
+
   const updateBg = (updates: Partial<BackgroundSettings>) => {
     setBgSettings(prev => ({ ...prev, ...updates }));
   };
@@ -150,13 +166,20 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
           />
         ) : (
           <>
-            <span className="text-[11px] text-gray-400 truncate flex-1 px-1">{obj.name}</span>
+            <span className={`text-[11px] truncate flex-1 px-1 ${obj.locked ? 'text-gray-600 italic' : 'text-gray-400'}`}>{obj.name}</span>
             {obj.referenceImageUrl && <LinkIcon size={10} className="text-blue-500 animate-pulse" />}
           </>
         )}
       </div>
       
       <div className="flex items-center gap-1">
+        <button 
+           onClick={(e) => toggleLock(e, obj.id, !!obj.locked, false)} 
+           className={`p-1 transition-opacity ${obj.locked ? 'text-yellow-500 opacity-100' : 'text-gray-700 opacity-0 group-hover:opacity-100 hover:text-gray-400'}`}
+           title={obj.locked ? "Unlock Object" : "Lock Object"}
+        >
+           {obj.locked ? <Lock size={12} /> : <Unlock size={12} />}
+        </button>
         <button onClick={(e) => { e.stopPropagation(); startEditing(obj.id, obj.name); }} className="p-1 text-gray-600 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"><Edit2 size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); onRemove(obj.id); }} className="p-1 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12} /></button>
       </div>
@@ -426,15 +449,25 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                       {editingId === group.id ? (
                         <input autoFocus className="text-[11px] bg-black text-white border border-blue-500 rounded px-1 flex-1 min-w-0 outline-none" value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)} onBlur={() => commitEditing('grp')} onKeyDown={(e) => e.key === 'Enter' && commitEditing('grp')} onClick={(e) => e.stopPropagation()} />
                       ) : (
-                        <span className={`text-[11px] truncate font-bold uppercase tracking-tight ${selectedId === group.id ? 'text-blue-300' : 'text-gray-300'}`}>{group.name}</span>
+                        <span className={`text-[11px] truncate font-bold uppercase tracking-tight ${group.locked ? 'text-gray-600 italic' : (selectedId === group.id ? 'text-blue-300' : 'text-gray-300')}`}>{group.name}</span>
                       )}
                     </div>
-                    {selectedId === group.id && editingId !== group.id && (
-                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Always show lock button, others on hover or selected */}
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={(e) => toggleLock(e, group.id, !!group.locked, true)}
+                        className={`p-1 transition-opacity ${group.locked ? 'text-yellow-500 opacity-100' : 'text-gray-700 opacity-0 group-hover:opacity-100 hover:text-gray-400'}`}
+                        title={group.locked ? "Unlock Group" : "Lock Group"}
+                      >
+                         {group.locked ? <Lock size={12} /> : <Unlock size={12} />}
+                      </button>
+                      {selectedId === group.id && editingId !== group.id && (
+                        <>
                           <button onClick={(e) => { e.stopPropagation(); startEditing(group.id, group.name); }} className="p-1 text-gray-600 hover:text-blue-500"><Edit2 size={12} /></button>
                           <button onClick={(e) => { e.stopPropagation(); onRemoveGroup(group.id); }} className="p-1 text-gray-600 hover:text-red-500"><Trash2 size={12} /></button>
-                       </div>
-                    )}
+                        </>
+                      )}
+                    </div>
                   </div>
                   {group.isOpen && (
                     <div className="border-l border-[#222] ml-4 space-y-1 py-1">
