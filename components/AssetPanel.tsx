@@ -6,7 +6,7 @@ import {
   Square, Cone as ConeIcon, Layers as LayersIcon, FolderPlus, Folder, ChevronDown, ChevronRight,
   MoveHorizontal, MoveVertical, Maximize, Ghost, Camera, CameraOff, Save, Navigation, Link as LinkIcon,
   MousePointer2, HardDrive, Move, RotateCw, BoxSelect, Triangle, GripVertical, FolderOpen,
-  TriangleRight, Slice, Lock, Unlock // Added Lock icons
+  TriangleRight, Slice, Lock, Unlock, Eye, EyeOff // Added Eye/EyeOff icons
 } from 'lucide-react';
 import { SceneObject, SceneGroup, CloudAsset, BackgroundSettings, PrimitiveType, CameraPreset } from '../types';
 import { search3DModels } from '../services/geminiService';
@@ -129,6 +129,19 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
     }
   };
 
+  const toggleVisibility = (e: React.MouseEvent, id: string, currentVisible: boolean | undefined, isGroup: boolean) => {
+    e.stopPropagation();
+    // Undefined treated as true (visible by default)
+    const isVisible = currentVisible !== false;
+    const newVisible = !isVisible;
+    
+    if (isGroup) {
+       onUpdateGroup(id, { visible: newVisible });
+    } else {
+       onUpdate(id, { visible: newVisible });
+    }
+  };
+
   const updateBg = (updates: Partial<BackgroundSettings>) => {
     setBgSettings(prev => ({ ...prev, ...updates }));
   };
@@ -143,48 +156,59 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const renderSceneItem = (obj: SceneObject, depth = 0) => (
-    <div 
-      key={obj.id} 
-      draggable
-      onDragStart={(e) => handleDragStart(e, obj.id)}
-      onClick={() => onSelect(obj.id)} 
-      className={`flex items-center justify-between p-2 rounded-md border cursor-pointer group transition-colors select-none ${selectedId === obj.id ? 'bg-[#1a1a1a] border-blue-500/50' : 'bg-[#0a0a0a] border-[#222]'} ${draggedObjId === obj.id ? 'opacity-40 border-dashed border-blue-500' : ''}`}
-      style={{ marginLeft: `${depth * 16}px` }}
-    >
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        <GripVertical size={10} className="text-gray-700 cursor-grab active:cursor-grabbing shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-        {editingId === obj.id ? (
-          <input 
-            autoFocus
-            className="text-[11px] bg-black text-white border border-blue-500 rounded px-1 flex-1 min-w-0 mr-2 outline-none"
-            value={editNameValue}
-            onChange={(e) => setEditNameValue(e.target.value)}
-            onBlur={() => commitEditing('obj')}
-            onKeyDown={(e) => e.key === 'Enter' && commitEditing('obj')}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <>
-            <span className={`text-[11px] truncate flex-1 px-1 ${obj.locked ? 'text-gray-600 italic' : 'text-gray-400'}`}>{obj.name}</span>
-            {obj.referenceImageUrl && <LinkIcon size={10} className="text-blue-500 animate-pulse" />}
-          </>
-        )}
+  const renderSceneItem = (obj: SceneObject, depth = 0) => {
+    const isVisible = obj.visible !== false;
+
+    return (
+      <div 
+        key={obj.id} 
+        draggable
+        onDragStart={(e) => handleDragStart(e, obj.id)}
+        onClick={() => onSelect(obj.id)} 
+        className={`flex items-center justify-between p-2 rounded-md border cursor-pointer group transition-colors select-none ${selectedId === obj.id ? 'bg-[#1a1a1a] border-blue-500/50' : 'bg-[#0a0a0a] border-[#222]'} ${draggedObjId === obj.id ? 'opacity-40 border-dashed border-blue-500' : ''}`}
+        style={{ marginLeft: `${depth * 16}px` }}
+      >
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <GripVertical size={10} className="text-gray-700 cursor-grab active:cursor-grabbing shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+          {editingId === obj.id ? (
+            <input 
+              autoFocus
+              className="text-[11px] bg-black text-white border border-blue-500 rounded px-1 flex-1 min-w-0 mr-2 outline-none"
+              value={editNameValue}
+              onChange={(e) => setEditNameValue(e.target.value)}
+              onBlur={() => commitEditing('obj')}
+              onKeyDown={(e) => e.key === 'Enter' && commitEditing('obj')}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <>
+              <span className={`text-[11px] truncate flex-1 px-1 ${obj.locked ? 'text-gray-600 italic' : 'text-gray-400'} ${!isVisible ? 'opacity-50 line-through decoration-gray-700' : ''}`}>{obj.name}</span>
+              {obj.referenceImageUrl && <LinkIcon size={10} className="text-blue-500 animate-pulse" />}
+            </>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-1">
+          <button 
+             onClick={(e) => toggleVisibility(e, obj.id, obj.visible, false)} 
+             className={`p-1 transition-opacity ${!isVisible ? 'text-gray-500' : 'text-gray-600 hover:text-gray-300 opacity-0 group-hover:opacity-100'}`}
+             title={isVisible ? "Hide Object" : "Show Object"}
+          >
+             {isVisible ? <Eye size={12} /> : <EyeOff size={12} />}
+          </button>
+          <button 
+             onClick={(e) => toggleLock(e, obj.id, !!obj.locked, false)} 
+             className={`p-1 transition-opacity ${obj.locked ? 'text-yellow-500 opacity-100' : 'text-gray-700 opacity-0 group-hover:opacity-100 hover:text-gray-400'}`}
+             title={obj.locked ? "Unlock Object" : "Lock Object"}
+          >
+             {obj.locked ? <Lock size={12} /> : <Unlock size={12} />}
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); startEditing(obj.id, obj.name); }} className="p-1 text-gray-600 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"><Edit2 size={12} /></button>
+          <button onClick={(e) => { e.stopPropagation(); onRemove(obj.id); }} className="p-1 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12} /></button>
+        </div>
       </div>
-      
-      <div className="flex items-center gap-1">
-        <button 
-           onClick={(e) => toggleLock(e, obj.id, !!obj.locked, false)} 
-           className={`p-1 transition-opacity ${obj.locked ? 'text-yellow-500 opacity-100' : 'text-gray-700 opacity-0 group-hover:opacity-100 hover:text-gray-400'}`}
-           title={obj.locked ? "Unlock Object" : "Lock Object"}
-        >
-           {obj.locked ? <Lock size={12} /> : <Unlock size={12} />}
-        </button>
-        <button onClick={(e) => { e.stopPropagation(); startEditing(obj.id, obj.name); }} className="p-1 text-gray-600 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"><Edit2 size={12} /></button>
-        <button onClick={(e) => { e.stopPropagation(); onRemove(obj.id); }} className="p-1 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12} /></button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const selectedObject = objects.find(o => o.id === selectedId);
   const selectedGroup = groups.find(g => g.id === selectedId);
@@ -425,7 +449,9 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
             </div>
 
             <div className="space-y-2">
-              {groups.map(group => (
+              {groups.map(group => {
+                const isGroupVisible = group.visible !== false;
+                return (
                 <div 
                   key={group.id} 
                   className={`space-y-1 rounded-md transition-all ${dragOverGroupId === group.id ? 'bg-blue-600/20 ring-1 ring-blue-500' : ''}`}
@@ -449,11 +475,18 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                       {editingId === group.id ? (
                         <input autoFocus className="text-[11px] bg-black text-white border border-blue-500 rounded px-1 flex-1 min-w-0 outline-none" value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)} onBlur={() => commitEditing('grp')} onKeyDown={(e) => e.key === 'Enter' && commitEditing('grp')} onClick={(e) => e.stopPropagation()} />
                       ) : (
-                        <span className={`text-[11px] truncate font-bold uppercase tracking-tight ${group.locked ? 'text-gray-600 italic' : (selectedId === group.id ? 'text-blue-300' : 'text-gray-300')}`}>{group.name}</span>
+                        <span className={`text-[11px] truncate font-bold uppercase tracking-tight ${group.locked ? 'text-gray-600 italic' : (selectedId === group.id ? 'text-blue-300' : 'text-gray-300')} ${!isGroupVisible ? 'opacity-50 line-through decoration-gray-700' : ''}`}>{group.name}</span>
                       )}
                     </div>
-                    {/* Always show lock button, others on hover or selected */}
+                    {/* Always show lock/visible button, others on hover or selected */}
                     <div className="flex items-center gap-1">
+                      <button 
+                         onClick={(e) => toggleVisibility(e, group.id, group.visible, true)}
+                         className={`p-1 transition-opacity ${!isGroupVisible ? 'text-gray-500' : 'text-gray-600 hover:text-gray-300 opacity-0 group-hover:opacity-100'}`}
+                         title={isGroupVisible ? "Hide Group" : "Show Group"}
+                      >
+                         {isGroupVisible ? <Eye size={12} /> : <EyeOff size={12} />}
+                      </button>
                       <button 
                         onClick={(e) => toggleLock(e, group.id, !!group.locked, true)}
                         className={`p-1 transition-opacity ${group.locked ? 'text-yellow-500 opacity-100' : 'text-gray-700 opacity-0 group-hover:opacity-100 hover:text-gray-400'}`}
@@ -478,7 +511,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                     </div>
                   )}
                 </div>
-              ))}
+              );})}
 
               <div 
                 className={`space-y-1 pt-2 rounded-md transition-all min-h-[50px] ${dragOverGroupId === 'root' ? 'bg-blue-600/20 ring-1 ring-blue-500' : ''}`}

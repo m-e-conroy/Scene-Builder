@@ -6,6 +6,7 @@ export interface SceneGroup {
   name: string;
   isOpen: boolean;
   locked?: boolean;
+  visible?: boolean;
 }
 
 export interface SceneObject {
@@ -22,6 +23,7 @@ export interface SceneObject {
   groupId?: string; // Reference to a SceneGroup
   referenceImageUrl?: string; // AI Reference Image
   locked?: boolean;
+  visible?: boolean;
 }
 
 export interface CloudAsset {

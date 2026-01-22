@@ -168,12 +168,13 @@ const ObliqueWedge: React.FC<{ color: string, shadowProps: any }> = ({ color, sh
 interface ModelProps {
   obj: SceneObject;
   isLocked: boolean;
+  isVisible: boolean;
   onSelect: (id: string) => void;
   onRegisterRef: (id: string, ref: THREE.Object3D | null) => void;
 }
 
 const Model: React.FC<ModelProps> = ({ 
-  obj, isLocked, onSelect, onRegisterRef
+  obj, isLocked, isVisible, onSelect, onRegisterRef
 }) => {
   const { gl } = useThree();
   const [loading, setLoading] = useState(obj.type !== 'primitive');
@@ -323,9 +324,9 @@ const Model: React.FC<ModelProps> = ({
   }
 
   return (
-    <group ref={groupRef} position={obj.position} rotation={obj.rotation} scale={obj.scale}>
+    <group ref={groupRef} position={obj.position} rotation={obj.rotation} scale={obj.scale} visible={isVisible}>
       <group ref={contentRef} onPointerDown={(e) => { 
-        if (isLocked) return;
+        if (isLocked || !isVisible) return;
         e.stopPropagation(); 
         onSelect(obj.id); 
       }}>
@@ -378,6 +379,16 @@ const Viewport: React.FC<ViewportProps> = ({
     return !!(obj.locked || (obj.groupId && groups.find(g => g.id === obj.groupId)?.locked));
   }, [groups]);
 
+  // Helper to determine if an object is visible
+  const isObjectVisible = useCallback((obj: SceneObject) => {
+    if (obj.visible === false) return false;
+    if (obj.groupId) {
+      const group = groups.find(g => g.id === obj.groupId);
+      if (group && group.visible === false) return false;
+    }
+    return true;
+  }, [groups]);
+
   // Check if current selection is locked
   const isSelectionLocked = useMemo(() => {
     if (!selectedId) return false;
@@ -387,6 +398,16 @@ const Viewport: React.FC<ViewportProps> = ({
     if (obj) return isObjectLocked(obj);
     return false;
   }, [selectedId, groups, objects, isObjectLocked]);
+
+  // Check if current selection is visible
+  const isSelectionVisible = useMemo(() => {
+    if (!selectedId) return false;
+    const group = groups.find(g => g.id === selectedId);
+    if (group) return group.visible !== false;
+    const obj = objects.find(o => o.id === selectedId);
+    if (obj) return isObjectVisible(obj);
+    return false;
+  }, [selectedId, groups, objects, isObjectVisible]);
 
   // Updated Registration Logic: Checks if the incoming model is the currently 
   // selected one. If so, attaches it immediately.
@@ -423,7 +444,7 @@ const Viewport: React.FC<ViewportProps> = ({
       let hasObjects = false;
       objectsInSelectedGroup.forEach(obj => {
         const ref = modelRefs.current.get(obj.id);
-        if (ref) {
+        if (ref && isObjectVisible(obj)) { // Only include visible objects in pivot calculation? Optional, but safer.
           ref.updateMatrixWorld();
           box.expandByObject(ref);
           hasObjects = true;
@@ -457,7 +478,7 @@ const Viewport: React.FC<ViewportProps> = ({
     } else {
       setActiveTarget(null);
     }
-  }, [selectedId, selectedGroup, objectsInSelectedGroup]);
+  }, [selectedId, selectedGroup, objectsInSelectedGroup, isObjectVisible]);
 
 
   // 1. On Drag Start: Capture the relative transform of every object to the pivot
@@ -586,7 +607,8 @@ const Viewport: React.FC<ViewportProps> = ({
               <Model 
                 key={obj.id} 
                 obj={obj}
-                isLocked={isObjectLocked(obj)} 
+                isLocked={isObjectLocked(obj)}
+                isVisible={isObjectVisible(obj)}
                 onSelect={onSelect} 
                 onRegisterRef={registerModelRef}
               />
@@ -596,7 +618,7 @@ const Viewport: React.FC<ViewportProps> = ({
           {/* Invisible Pivot Group used as a driver for transformations */}
           <group ref={pivotRef} />
 
-          {activeTarget && !isSelectionLocked && (
+          {activeTarget && !isSelectionLocked && isSelectionVisible && (
             <>
               <TransformControls 
                 key={activeTarget.uuid}
