@@ -124,20 +124,22 @@ export const processSceneToImage = async (
         }
     });
     lightingRefInstruction = `
-    [INSTRUCTIONS: GLOBAL LIGHTING REFERENCE]
-    - Reference Image ${nextImageIndex} is the GLOBAL LIGHTING SOURCE.
-    - You MUST replicate the exact shadow length, light direction, color temperature, and intensity from this image.
-    - The entire scene should feel like it exists in the same environment as this reference image.
+    [INSTRUCTIONS: GLOBAL LIGHTING & ATMOSPHERE ONLY]
+    - Reference Image ${nextImageIndex} is provided STRICTLY for lighting analysis.
+    - DO NOT composite, blend, or place this image content into the scene.
+    - DO NOT use the geometry or objects from Reference Image ${nextImageIndex}.
+    - EXTRACT the lighting direction, color temperature, shadow softness, and exposure from Reference Image ${nextImageIndex}.
+    - APPLY these extracted lighting parameters to the 3D scene provided in Image 1.
     `;
     nextImageIndex++;
   }
 
   const masterPrompt = `
     [TASK: NEURAL RENDER ENGINE]
-    Transform the attached 3D viewport screenshot into a high-quality rendered image.
+    Transform Image 1 (the 3D viewport screenshot) into a high-quality rendered image.
     
     [SCENE GRAPH & SEMANTICS]
-    The image contains the following objects. Use their names to infer their material and appearance:
+    Image 1 contains the following objects. Use their names to infer their material and appearance:
     ${sceneSemantics}
     
     [INSTRUCTIONS: REFERENCE IMAGES]
@@ -146,7 +148,7 @@ export const processSceneToImage = async (
     ${lightingRefInstruction}
 
     [INSTRUCTIONS: SEMANTIC MAPPING]
-    1. **Identify Objects**: Look at the "viewport color" and "world coordinates" in the Scene Graph above to identify which shape in the image corresponds to which name.
+    1. **Identify Objects**: Look at the "viewport color" and "world coordinates" in the Scene Graph above to identify which shape in Image 1 corresponds to which name.
     2. **Apply Materials**: Use the object's NAME to determine its material. 
        - Example: If an object is named "Wooden Crates", render it with wood texture.
        - Example: If an object is named "Neon Sign", make it emit light.
@@ -163,6 +165,7 @@ export const processSceneToImage = async (
     - Realistic Global Illumination (GI) and HDR lighting.
     - Physically Based Rendering (PBR) materials.
     - Cinematic post-processing.
+    - The final output must structurally match Image 1, but with the lighting style of the Reference Image (if provided).
   `;
 
   // Add the text prompt part last
