@@ -1,5 +1,10 @@
-import React from 'react';
-import { Sparkles, Sliders, Image as ImageIcon, Loader2, Info, Maximize2, Sun, Trash2, Upload } from 'lucide-react';
+import React, { useState } from 'react';
+import { 
+  Sparkles, Sliders, Image as ImageIcon, Loader2, Info, Maximize2, 
+  Sun, Trash2, Upload, Wand2, Plus, Check, Lightbulb, Camera, 
+  Zap, Palette, Tag, BrainCircuit
+} from 'lucide-react';
+import { enhancePrompt } from '../services/geminiService';
 
 interface AIPanelProps {
   prompt: string;
@@ -14,11 +19,29 @@ interface AIPanelProps {
   setLightingReference: (url: string | null) => void;
 }
 
+const TEMPLATES = [
+  { label: "Cinematic Reality", prompt: "Cinematic shot, highly detailed, photorealistic, 8k resolution, dramatic lighting, depth of field" },
+  { label: "Studio Product", prompt: "Studio photography, professional lighting, clean background, sharp focus, 4k, product advertisement" },
+  { label: "Architectural", prompt: "Architectural visualization, modern design, interior lighting, wide angle, hyper-realistic, unreal engine 5" },
+  { label: "Sci-Fi Concept", prompt: "Futuristic sci-fi concept art, neon lights, cyberpunk aesthetic, volumetric fog, digital art, trending on artstation" },
+  { label: "Fantasy", prompt: "Fantasy environment, magical atmosphere, ethereal lighting, painterly style, matte painting, masterpiece" }
+];
+
+const KEYWORD_CATEGORIES = {
+  Lighting: { icon: <Lightbulb size={12} />, words: ["Golden Hour", "Soft Box", "Volumetric Fog", "Neon Lights", "Rim Lighting", "Global Illumination", "Cinematic Lighting", "Dark & Moody"] },
+  Camera: { icon: <Camera size={12} />, words: ["Wide Angle", "Macro", "Telephoto", "Bokeh", "Depth of Field", "Fisheye", "ISO 100", "Tilt-Shift"] },
+  Quality: { icon: <Zap size={12} />, words: ["8K Resolution", "Photorealistic", "Unreal Engine 5", "Octane Render", "Ray Tracing", "Hyper-Detailed", "HDR", "Sharp Focus"] },
+  Style: { icon: <Palette size={12} />, words: ["Cyberpunk", "Minimalist", "Industrial", "Surrealism", "Vaporwave", "Noir", "Ghibli Style", "Low Poly"] }
+};
+
 const AIPanel: React.FC<AIPanelProps> = ({ 
   prompt, setPrompt, strength, setStrength, onGenerate, isGenerating, resultImage, onOpenPreview,
   lightingReference, setLightingReference
 }) => {
-  
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [activeKeywordTab, setActiveKeywordTab] = useState<keyof typeof KEYWORD_CATEGORIES>('Lighting');
+  const [isRefining, setIsRefining] = useState(false);
+
   const handleLightingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -30,27 +53,131 @@ const AIPanel: React.FC<AIPanelProps> = ({
     }
   };
 
+  const addKeyword = (word: string) => {
+    if (prompt.includes(word)) return;
+    const separator = prompt.trim().length > 0 && !prompt.trim().endsWith(',') ? ', ' : '';
+    setPrompt(`${prompt.trim()}${separator}${word}`);
+  };
+
+  const applyTemplate = (templatePrompt: string) => {
+    if (prompt.trim().length > 0) {
+      if (window.confirm("Replace current prompt with template?")) {
+        setPrompt(templatePrompt);
+      }
+    } else {
+      setPrompt(templatePrompt);
+    }
+    setShowTemplates(false);
+  };
+
+  const handleEnhance = async () => {
+    if (!prompt.trim() || isRefining) return;
+    setIsRefining(true);
+    try {
+      const refined = await enhancePrompt(prompt);
+      setPrompt(refined);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
   return (
-    <div className="w-80 h-full bg-[#111] border-l border-[#222] flex flex-col pointer-events-auto overflow-y-auto">
-      <div className="p-4 border-b border-[#222]">
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Sparkles size={14} className="text-blue-400" /> Neural Renderer
+    <div className="w-80 h-full bg-[#111] border-l border-[#222] flex flex-col pointer-events-auto overflow-y-auto custom-scrollbar">
+      <div className="p-4 border-b border-[#222] bg-[#111] sticky top-0 z-10">
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4 flex items-center justify-between">
+          <span className="flex items-center gap-2"><Sparkles size={14} className="text-blue-400" /> Neural Renderer</span>
         </h2>
         
         <div className="space-y-4">
-          <div>
-            <label className="block text-[10px] text-gray-500 uppercase font-bold mb-2 flex justify-between">
-              Creative Prompt
-              <span className="text-blue-500 font-mono text-[8px]">GEMINI 2.5 FLASH</span>
-            </label>
-            <textarea 
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe materials, lighting, and mood..."
-              className="w-full h-24 bg-[#0a0a0a] border border-[#222] rounded-md p-3 text-xs text-white focus:outline-none focus:border-blue-500 resize-none leading-relaxed transition-colors"
-            />
+          
+          {/* Prompt Section */}
+          <div className="space-y-2">
+             <div className="flex items-center justify-between">
+                <label className="text-[10px] text-gray-500 uppercase font-bold">Creative Prompt</label>
+                <div className="flex items-center gap-1">
+                   <span className="text-[8px] text-gray-600 font-mono mr-2">{prompt.length} chars</span>
+                   
+                   <button 
+                      onClick={handleEnhance}
+                      disabled={isRefining || !prompt.trim()}
+                      className={`p-1 rounded transition-all ${isRefining ? 'bg-purple-600/20 text-purple-400' : 'bg-[#222] text-gray-400 hover:bg-purple-600 hover:text-white'}`}
+                      title="Refine with AI"
+                   >
+                      {isRefining ? <Loader2 size={10} className="animate-spin" /> : <BrainCircuit size={10} />}
+                   </button>
+
+                   <button 
+                      onClick={() => setShowTemplates(!showTemplates)}
+                      className={`p-1 rounded transition-colors ${showTemplates ? 'bg-blue-600 text-white' : 'bg-[#222] text-gray-400 hover:text-white'}`}
+                      title="Templates"
+                   >
+                      <Wand2 size={10} />
+                   </button>
+                </div>
+             </div>
+
+             {showTemplates && (
+                <div className="bg-[#1a1a1a] border border-[#333] rounded-lg p-2 mb-2 grid grid-cols-1 gap-1 animate-in slide-in-from-top-2">
+                   {TEMPLATES.map(t => (
+                      <button 
+                        key={t.label} 
+                        onClick={() => applyTemplate(t.prompt)}
+                        className="text-left px-2 py-1.5 hover:bg-[#252525] rounded text-[10px] text-gray-300 flex items-center gap-2 group"
+                      >
+                         <Tag size={10} className="text-blue-500 opacity-0 group-hover:opacity-100" />
+                         {t.label}
+                      </button>
+                   ))}
+                </div>
+             )}
+
+             <div className="relative group">
+                <textarea 
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Describe materials, lighting, and mood..."
+                  className="w-full h-24 bg-[#0a0a0a] border border-[#222] rounded-t-md p-3 text-xs text-white focus:outline-none focus:border-blue-500 resize-none leading-relaxed transition-colors scrollbar-hide"
+                />
+                
+                {/* Keyword Inspector */}
+                <div className="bg-[#151515] border-x border-b border-[#222] rounded-b-md p-2">
+                   <div className="flex gap-1 mb-2 border-b border-[#333] pb-1">
+                      {(Object.keys(KEYWORD_CATEGORIES) as Array<keyof typeof KEYWORD_CATEGORIES>).map(cat => (
+                         <button
+                            key={cat}
+                            onClick={() => setActiveKeywordTab(cat)}
+                            className={`flex-1 py-1 text-[8px] font-bold uppercase tracking-wider rounded flex items-center justify-center gap-1 transition-colors
+                               ${activeKeywordTab === cat ? 'bg-[#222] text-blue-400' : 'text-gray-600 hover:text-gray-400'}`}
+                         >
+                            {KEYWORD_CATEGORIES[cat].icon}
+                            {cat}
+                         </button>
+                      ))}
+                   </div>
+                   <div className="grid grid-cols-2 gap-1 max-h-24 overflow-y-auto scrollbar-hide">
+                      {KEYWORD_CATEGORIES[activeKeywordTab].words.map(word => {
+                         const isActive = prompt.includes(word);
+                         return (
+                            <button
+                               key={word}
+                               onClick={() => addKeyword(word)}
+                               disabled={isActive}
+                               className={`px-2 py-1 text-[9px] rounded text-left truncate transition-all flex items-center justify-between group
+                                  ${isActive ? 'bg-blue-900/20 text-blue-400' : 'bg-[#0a0a0a] text-gray-400 hover:bg-[#222] hover:text-white'}`}
+                            >
+                               {word}
+                               {isActive ? <Check size={8} /> : <Plus size={8} className="opacity-0 group-hover:opacity-100" />}
+                            </button>
+                         )
+                      })}
+                   </div>
+                </div>
+             </div>
           </div>
 
+          {/* Lighting Reference */}
           <div>
             <label className="block text-[10px] text-gray-500 uppercase font-bold mb-2 flex justify-between items-center">
               <span className="flex items-center gap-1"><Sun size={10} /> Lighting Reference</span>
@@ -83,6 +210,7 @@ const AIPanel: React.FC<AIPanelProps> = ({
             </div>
           </div>
 
+          {/* Strength Slider */}
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
@@ -99,16 +227,6 @@ const AIPanel: React.FC<AIPanelProps> = ({
               onChange={(e) => setStrength(parseFloat(e.target.value))}
               className="w-full accent-blue-600 h-1 bg-[#222] rounded-lg appearance-none cursor-pointer"
             />
-            <div className="mt-2 flex items-start gap-2 bg-blue-500/5 p-2 rounded border border-blue-500/10">
-              <Info size={12} className="text-blue-500 mt-0.5 shrink-0" />
-              <p className="text-[9px] text-gray-400 leading-tight">
-                {strength < 0.35 
-                  ? "Rigid: Keeps exact 3D silhouettes. Best for product shots." 
-                  : strength > 0.75 
-                  ? "Fluid: Uses scene as a loose sketch. Best for concept art."
-                  : "Balanced: Maintains layout but reimagines every surface."}
-              </p>
-            </div>
           </div>
 
           <button 

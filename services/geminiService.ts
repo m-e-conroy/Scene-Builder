@@ -240,3 +240,39 @@ export const search3DModels = async (query: string): Promise<CloudAsset[]> => {
     return [];
   }
 };
+
+/**
+ * Enhances a short user prompt into a professional image generation prompt.
+ */
+export const enhancePrompt = async (currentPrompt: string): Promise<string> => {
+  if (!currentPrompt.trim()) return "";
+  
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Act as an expert prompt engineer for photorealistic AI rendering.
+      
+      Task: Rewrite and enhance the following user prompt to be more descriptive, artistic, and detailed. 
+      Focus on adding details about:
+      1. Lighting (e.g., volumetric, cinematic, studio, soft)
+      2. Material properties (e.g., matte, glossy, PBR, textured)
+      3. Camera settings (e.g., depth of field, 85mm lens, wide angle)
+      4. Atmosphere/Mood
+      5. Technical quality (e.g., 8k, unreal engine 5, octane render)
+      
+      Constraints:
+      - Keep the core subject/intent of the user exactly the same.
+      - Do NOT add conversational text. Output ONLY the raw prompt string.
+      - Keep it under 80 words.
+
+      User Prompt: "${currentPrompt}"`,
+    });
+
+    return response.text?.trim() || currentPrompt;
+  } catch (error) {
+    console.error("Prompt Enhancement Error:", error);
+    return currentPrompt;
+  }
+};
