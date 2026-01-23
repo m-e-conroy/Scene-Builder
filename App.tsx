@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [snapSize, setSnapSize] = useState(0.5);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [projectName, setProjectName] = useState('Untitled Project');
   
   // Camera State
   const [cameraPresets, setCameraPresets] = useState<CameraPreset[]>(DEFAULT_CAMERA_PRESETS);
@@ -186,6 +187,49 @@ const App: React.FC = () => {
     showStatus("PASTED: " + newObj.name);
   }, [clipboard, objects, groups, recordHistory]);
 
+  const handleDuplicate = useCallback((id: string) => {
+    recordHistory(objects, groups);
+
+    // Check if it is a group
+    const groupToDup = groups.find(g => g.id === id);
+    if (groupToDup) {
+      const newGroupId = Math.random().toString(36).substr(2, 9);
+      const newGroup: SceneGroup = {
+        ...groupToDup,
+        id: newGroupId,
+        name: `${groupToDup.name} (Copy)`
+      };
+      
+      const groupObjects = objects.filter(o => o.groupId === id);
+      const newGroupObjects = groupObjects.map(obj => ({
+        ...obj,
+        id: Math.random().toString(36).substr(2, 9),
+        groupId: newGroupId,
+        position: [obj.position[0] + 2, obj.position[1], obj.position[2] + 2] as [number, number, number] // Offset group contents
+      }));
+
+      setGroups(prev => [...prev, newGroup]);
+      setObjects(prev => [...prev, ...newGroupObjects]);
+      setSelectedId(newGroupId);
+      showStatus("DUPLICATED GROUP");
+      return;
+    }
+
+    // Check if it is an object
+    const objToDup = objects.find(o => o.id === id);
+    if (objToDup) {
+      const newObj: SceneObject = {
+        ...objToDup,
+        id: Math.random().toString(36).substr(2, 9),
+        name: `${objToDup.name} (Copy)`,
+        position: [objToDup.position[0] + 1, objToDup.position[1], objToDup.position[2] + 1]
+      };
+      setObjects(prev => [...prev, newObj]);
+      setSelectedId(newObj.id);
+      showStatus("DUPLICATED OBJECT");
+    }
+  }, [objects, groups, recordHistory]);
+
   // Project Management
   const resetProject = useCallback(() => {
     setObjects([]);
@@ -199,6 +243,7 @@ const App: React.FC = () => {
     setLightingReference(null);
     setResultImage(null);
     setSourceImage(null);
+    setProjectName('Untitled Project');
     showStatus("NEW PROJECT STARTED");
     setIsNewProjectDialogOpen(false);
   }, []);
@@ -254,6 +299,7 @@ const App: React.FC = () => {
       }
 
       const projectData = {
+        name: projectName,
         version: 1,
         timestamp: Date.now(),
         objects: objectsToSave,
@@ -263,12 +309,13 @@ const App: React.FC = () => {
         aiSettings: { prompt, strength, lightingReference }
       };
 
+      const safeName = projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'untitled';
       const jsonString = JSON.stringify(projectData, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `gemini-scene-${new Date().toISOString().slice(0,10)}.json`;
+      link.download = `gemini-scene-${safeName}-${new Date().toISOString().slice(0,10)}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -301,6 +348,11 @@ const App: React.FC = () => {
           setPrompt(json.aiSettings.prompt || '');
           setStrength(json.aiSettings.strength ?? 0.5);
           setLightingReference(json.aiSettings.lightingReference || null);
+        }
+        if (json.name) {
+          setProjectName(json.name);
+        } else {
+          setProjectName(file.name.replace('.json', '') || 'Untitled Project');
         }
         
         setHistory({ past: [], future: [] });
@@ -342,6 +394,10 @@ const App: React.FC = () => {
         e.preventDefault();
         handlePaste();
       }
+      if (ctrlKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        if (selectedId) handleDuplicate(selectedId);
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedId) {
           const isGroup = groups.find(g => g.id === selectedId);
@@ -352,7 +408,7 @@ const App: React.FC = () => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleCopy, handlePaste, handleUndo, handleRedo, selectedId, groups]);
+  }, [handleCopy, handlePaste, handleUndo, handleRedo, handleDuplicate, selectedId, groups]);
 
   const handleSetBackground = useCallback((file: File) => {
     const url = URL.createObjectURL(file);
@@ -461,9 +517,15 @@ const App: React.FC = () => {
           <div className="bg-blue-600 p-2 rounded-lg shadow-lg shadow-blue-500/20">
             <Layers className="text-white" size={18} />
           </div>
-          <div>
-            <h1 className="text-sm font-bold tracking-tight text-white uppercase">GEMINI SCENE BUILDER</h1>
-            <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest opacity-80">Volumetric Engine</p>
+          <div className="flex flex-col">
+            <input 
+              type="text" 
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              className="bg-transparent border-none p-0 text-sm font-bold tracking-tight text-white uppercase focus:ring-0 focus:outline-none placeholder-gray-600 w-64"
+              placeholder="UNTITLED PROJECT"
+            />
+            <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest opacity-80">GEMINI SCENE BUILDER</p>
           </div>
         </div>
 
@@ -514,6 +576,7 @@ const App: React.FC = () => {
           onUpdate={handleUpdate}
           onUpdateGroup={handleUpdateGroup}
           onAddGroup={handleAddGroup}
+          onDuplicate={handleDuplicate}
           cameraPresets={cameraPresets}
           onSavePreset={handleSaveCameraPreset}
           onLoadPreset={handleLoadCameraPreset}

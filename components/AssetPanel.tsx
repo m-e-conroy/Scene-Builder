@@ -8,7 +8,7 @@ import {
   MousePointer2, HardDrive, Move, RotateCw, BoxSelect, Triangle, GripVertical, FolderOpen,
   TriangleRight, Slice, Lock, Unlock, Eye, EyeOff,
   Diamond, Hexagon, Sunset, Battery, CircleDot, Dna, 
-  Shapes, Star, Gem, Filter, Tent // New Icons
+  Shapes, Star, Gem, Filter, Tent, Copy // Added Copy icon
 } from 'lucide-react';
 import { SceneObject, SceneGroup, CloudAsset, BackgroundSettings, PrimitiveType, CameraPreset } from '../types';
 import { search3DModels } from '../services/geminiService';
@@ -31,6 +31,7 @@ interface AssetPanelProps {
   onUpdate: (id: string, updates: Partial<SceneObject>) => void;
   onUpdateGroup: (id: string, updates: Partial<SceneGroup>) => void;
   onAddGroup: () => void;
+  onDuplicate: (id: string) => void; // Added onDuplicate prop
   cameraPresets: CameraPreset[];
   onSavePreset: (name: string) => void;
   onLoadPreset: (preset: CameraPreset) => void;
@@ -74,7 +75,7 @@ const PRIMITIVES: { type: PrimitiveType, icon: React.ReactNode, name: string }[]
 const AssetPanel: React.FC<AssetPanelProps> = ({ 
   onAddLocal, onAddCloud, onAddPrimitive, onSetBackground, bgSettings, setBgSettings,
   snapSize, setSnapSize, objects, groups, onRemove, onRemoveGroup, selectedId, 
-  onSelect, onUpdate, onUpdateGroup, onAddGroup,
+  onSelect, onUpdate, onUpdateGroup, onAddGroup, onDuplicate,
   cameraPresets, onSavePreset, onLoadPreset, onDeletePreset
 }) => {
   const [activeTab, setActiveTab] = useState<'local' | 'cloud' | 'shapes' | 'scene' | 'cam' | 'env'>('shapes');
@@ -216,6 +217,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
           >
              {obj.locked ? <Lock size={12} /> : <Unlock size={12} />}
           </button>
+          <button onClick={(e) => { e.stopPropagation(); onDuplicate(obj.id); }} className="p-1 text-gray-600 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Duplicate"><Copy size={12} /></button>
           <button onClick={(e) => { e.stopPropagation(); startEditing(obj.id, obj.name); }} className="p-1 text-gray-600 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"><Edit2 size={12} /></button>
           <button onClick={(e) => { e.stopPropagation(); onRemove(obj.id); }} className="p-1 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12} /></button>
         </div>
@@ -509,6 +511,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                       </button>
                       {selectedId === group.id && editingId !== group.id && (
                         <>
+                          <button onClick={(e) => { e.stopPropagation(); onDuplicate(group.id); }} className="p-1 text-gray-600 hover:text-blue-500" title="Duplicate Group"><Copy size={12} /></button>
                           <button onClick={(e) => { e.stopPropagation(); startEditing(group.id, group.name); }} className="p-1 text-gray-600 hover:text-blue-500"><Edit2 size={12} /></button>
                           <button onClick={(e) => { e.stopPropagation(); onRemoveGroup(group.id); }} className="p-1 text-gray-600 hover:text-red-500"><Trash2 size={12} /></button>
                         </>
