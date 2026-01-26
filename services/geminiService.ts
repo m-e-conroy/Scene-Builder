@@ -29,6 +29,46 @@ export const processSceneToImage = async (
   // Collect objects that have reference images
   const objectsWithRefs = objects.filter(o => o.referenceImageUrl);
 
+  // Initialize parts with the main scene image (Image 1)
+  const parts: any[] = [
+    {
+      inlineData: {
+        mimeType: 'image/png',
+        data: base64Image.split(',')[1] 
+      }
+    }
+  ];
+
+  let nextImageIndex = 2; // Image 1 is the main viewport
+  const objectRefIndices: Record<string, number> = {};
+
+  // Add Object Reference Images to parts and map them
+  objectsWithRefs.forEach(obj => {
+    if (obj.referenceImageUrl) {
+        parts.push({
+            inlineData: {
+                mimeType: 'image/png',
+                data: obj.referenceImageUrl.split(',')[1]
+            }
+        });
+        objectRefIndices[obj.id] = nextImageIndex;
+        nextImageIndex++;
+    }
+  });
+
+  // Add Lighting Reference Image if present
+  let lightingRefIndex = -1;
+  if (lightingReferenceUrl) {
+    parts.push({
+        inlineData: {
+            mimeType: 'image/png',
+            data: lightingReferenceUrl.split(',')[1]
+        }
+    });
+    lightingRefIndex = nextImageIndex;
+    // nextImageIndex++; 
+  }
+
   // Helper to generate a detailed description for each object
   // This helps the AI map the visual block-out to the semantic name provided by the user
   const describeObject = (o: SceneObject) => {
@@ -44,7 +84,9 @@ export const processSceneToImage = async (
     const scaleDesc = `size[${s[0]},${s[1]},${s[2]}]`;
     const rotDesc = `rot[${r[0]}°,${r[1]}°,${r[2]}°]`;
     
-    const refTag = o.referenceImageUrl ? " [HAS_REFERENCE_IMAGE]" : "";
+    // Explicitly link the object to its reference image index in the description
+    const refIdx = objectRefIndices[o.id];
+    const refTag = refIdx ? ` [MUST MATCH STYLE OF REFERENCE IMAGE ${refIdx}]` : "";
     
     return `"${o.name}" (${typeDesc}, ${colorDesc}, ${posDesc}, ${scaleDesc}, ${rotDesc})${refTag}`;
   };
@@ -86,52 +128,29 @@ export const processSceneToImage = async (
 
   const structuralInstruction = getFidelityInstruction(strength);
 
-  // Construct parts: Primary Scene + Reference Images + Prompt
-  const parts: any[] = [
-    {
-      inlineData: {
-        mimeType: 'image/png',
-        data: base64Image.split(',')[1] 
-      }
-    }
-  ];
-
-  let nextImageIndex = 2; // Image 1 is the main viewport
-
-  // Process Object References
+  // Generate Reference Instructions with Strict Constraints
   const objRefInstructions = objectsWithRefs.map(obj => {
-    if (obj.referenceImageUrl) {
-        parts.push({
-            inlineData: {
-                mimeType: 'image/png',
-                data: obj.referenceImageUrl.split(',')[1]
-            }
-        });
-        const msg = `- Reference Image ${nextImageIndex} corresponds to object: "${obj.name}". Apply its style/texture to that specific object in the scene.`;
-        nextImageIndex++;
-        return msg;
-    }
-    return '';
+    const idx = objectRefIndices[obj.id];
+    if (!idx) return '';
+    return `
+    [STRICT CONSTRAINT: LOCALIZED TEXTURE APPLICATION]
+    - Reference Image ${idx} is a MATERIAL SOURCE strictly for the object named "${obj.name}".
+    - ACTION: Apply the texture, color, and material properties of Image ${idx} ONLY to the geometry of "${obj.name}" defined in Image 1.
+    - NEGATIVE CONSTRAINT: DO NOT allow the style of Image ${idx} to bleed into the background or other objects.
+    `;
   }).join('\n');
 
-  // Process Lighting Reference
+  // Generate Lighting Instructions
   let lightingRefInstruction = "";
-  if (lightingReferenceUrl) {
-    parts.push({
-        inlineData: {
-            mimeType: 'image/png',
-            data: lightingReferenceUrl.split(',')[1]
-        }
-    });
+  if (lightingRefIndex !== -1) {
     lightingRefInstruction = `
     [INSTRUCTIONS: GLOBAL LIGHTING & ATMOSPHERE ONLY]
-    - Reference Image ${nextImageIndex} is provided STRICTLY for lighting analysis.
+    - Reference Image ${lightingRefIndex} is provided STRICTLY for lighting analysis.
     - DO NOT composite, blend, or place this image content into the scene.
-    - DO NOT use the geometry or objects from Reference Image ${nextImageIndex}.
-    - EXTRACT the lighting direction, color temperature, shadow softness, and exposure from Reference Image ${nextImageIndex}.
+    - DO NOT use the geometry or objects from Reference Image ${lightingRefIndex}.
+    - EXTRACT the lighting direction, color temperature, shadow softness, and exposure from Reference Image ${lightingRefIndex}.
     - APPLY these extracted lighting parameters to the 3D scene provided in Image 1.
     `;
-    nextImageIndex++;
   }
 
   const masterPrompt = `
@@ -166,6 +185,7 @@ export const processSceneToImage = async (
     - Physically Based Rendering (PBR) materials.
     - Cinematic post-processing.
     - The final output must structurally match Image 1, but with the lighting style of the Reference Image (if provided).
+    - ISOLATION: Ensure object-specific references do not contaminate the rest of the scene.
   `;
 
   // Add the text prompt part last

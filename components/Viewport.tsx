@@ -30,22 +30,6 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader';
 import { SceneObject, SceneGroup, TransformMode, BackgroundSettings, CameraPreset } from '../types';
 import { RefreshCw } from 'lucide-react';
 
-// Fix for missing R3F type definitions in current environment
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      mesh: any;
-      group: any;
-      meshStandardMaterial: any;
-      primitive: any;
-      ambientLight: any;
-      spotLight: any;
-      boxHelper: any;
-      color: any;
-    }
-  }
-}
-
 // Shared loaders
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.5/');

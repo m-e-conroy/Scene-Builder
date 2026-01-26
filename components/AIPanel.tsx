@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Sparkles, Sliders, Image as ImageIcon, Loader2, Info, Maximize2, 
   Sun, Trash2, Upload, Wand2, Plus, Check, Lightbulb, Camera, 
-  Zap, Palette, Tag, BrainCircuit
+  Zap, Palette, Tag, BrainCircuit, X
 } from 'lucide-react';
 import { enhancePrompt } from '../services/geminiService';
 
@@ -53,10 +53,23 @@ const AIPanel: React.FC<AIPanelProps> = ({
     }
   };
 
-  const addKeyword = (word: string) => {
-    if (prompt.includes(word)) return;
-    const separator = prompt.trim().length > 0 && !prompt.trim().endsWith(',') ? ', ' : '';
-    setPrompt(`${prompt.trim()}${separator}${word}`);
+  const toggleKeyword = (word: string) => {
+    if (prompt.includes(word)) {
+      // Remove logic
+      let newPrompt = prompt;
+      // 1. Remove ", Word" (middle or end)
+      newPrompt = newPrompt.replace(new RegExp(`,\\s*${word}`, 'g'), '');
+      // 2. Remove "Word, " (start)
+      newPrompt = newPrompt.replace(new RegExp(`^${word}\\s*,\\s*`, 'g'), '');
+      // 3. Remove "Word" (standalone or leftover)
+      newPrompt = newPrompt.replace(new RegExp(word, 'g'), '');
+      
+      setPrompt(newPrompt.trim());
+    } else {
+      // Add logic
+      const separator = prompt.trim().length > 0 && !prompt.trim().endsWith(',') ? ', ' : '';
+      setPrompt(`${prompt.trim()}${separator}${word}`);
+    }
   };
 
   const applyTemplate = (templatePrompt: string) => {
@@ -162,13 +175,21 @@ const AIPanel: React.FC<AIPanelProps> = ({
                          return (
                             <button
                                key={word}
-                               onClick={() => addKeyword(word)}
-                               disabled={isActive}
-                               className={`px-2 py-1 text-[9px] rounded text-left truncate transition-all flex items-center justify-between group
-                                  ${isActive ? 'bg-blue-900/20 text-blue-400' : 'bg-[#0a0a0a] text-gray-400 hover:bg-[#222] hover:text-white'}`}
+                               onClick={() => toggleKeyword(word)}
+                               className={`px-2 py-1 text-[9px] rounded text-left truncate transition-all flex items-center justify-between group border
+                                  ${isActive 
+                                    ? 'bg-blue-600/20 text-blue-400 border-blue-500/50' 
+                                    : 'bg-[#0a0a0a] text-gray-400 border-transparent hover:border-[#333] hover:text-white'}`}
                             >
                                {word}
-                               {isActive ? <Check size={8} /> : <Plus size={8} className="opacity-0 group-hover:opacity-100" />}
+                               {isActive ? (
+                                  <div className="flex items-center">
+                                    <Check size={8} className="group-hover:hidden" />
+                                    <X size={8} className="hidden group-hover:block text-red-400" />
+                                  </div>
+                               ) : (
+                                  <Plus size={8} className="opacity-0 group-hover:opacity-100" />
+                               )}
                             </button>
                          )
                       })}
