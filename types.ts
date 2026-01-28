@@ -24,13 +24,22 @@ export interface SceneObject {
   referenceImageUrl?: string; // AI Reference Image
   locked?: boolean;
   visible?: boolean;
+  attribution?: {
+    author: string;
+    url: string;
+    license: string;
+  };
 }
 
 export interface CloudAsset {
   uid: string;
   name: string;
   thumbnail: string;
-  downloadUrl: string;
+  downloadUrl?: string; // Optional, fetched on demand for Sketchfab
+  sketchfabId?: string;
+  author?: string;
+  modelUrl?: string;
+  license?: string;
 }
 
 export interface BackgroundSettings {

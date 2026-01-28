@@ -28,7 +28,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader';
 import { SceneObject, SceneGroup, TransformMode, BackgroundSettings, CameraPreset } from '../types';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, AlertTriangle } from 'lucide-react';
 
 // Shared loaders
 const dracoLoader = new DRACOLoader();
@@ -259,6 +259,7 @@ const Model: React.FC<ModelProps> = ({
   const { gl } = useThree();
   const [loading, setLoading] = useState(obj.type !== 'primitive');
   const [loadedScene, setLoadedScene] = useState<THREE.Group | null>(null);
+  const [hasError, setHasError] = useState(false);
   
   const ktx2Loader = useMemo(() => {
     const loader = new KTX2Loader(globalLoadingManager);
@@ -273,6 +274,7 @@ const Model: React.FC<ModelProps> = ({
       return;
     }
     setLoading(true);
+    setHasError(false);
 
     let isMounted = true;
 
@@ -296,6 +298,7 @@ const Model: React.FC<ModelProps> = ({
         if (isMounted) {
             console.warn(`Failed to load model ${obj.name}:`, e);
             setLoading(false);
+            setHasError(true);
         }
     };
 
@@ -321,7 +324,7 @@ const Model: React.FC<ModelProps> = ({
   useEffect(() => {
     if (groupRef.current) onRegisterRef(obj.id, groupRef.current);
     return () => onRegisterRef(obj.id, null);
-  }, [obj.id, onRegisterRef, loading]);
+  }, [obj.id, onRegisterRef, loading, hasError]);
 
   const processedScene = useMemo(() => {
     if (obj.type === 'primitive' || !loadedScene) return null;
@@ -410,6 +413,28 @@ const Model: React.FC<ModelProps> = ({
             <span className="text-[8px] text-white font-black uppercase tracking-widest whitespace-nowrap">Syncing...</span>
           </div>
         </Html>
+      </group>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <group ref={groupRef} position={obj.position} rotation={obj.rotation} scale={obj.scale} visible={isVisible}>
+        <group ref={contentRef} onPointerDown={(e) => { 
+            if (isLocked || !isVisible) return;
+            e.stopPropagation(); 
+            onSelect(obj.id); 
+        }}>
+           <Html center>
+              <div className="flex items-center gap-1 bg-red-900/90 text-white px-2 py-1 rounded text-[8px] font-black uppercase tracking-widest border border-red-500/50 backdrop-blur-sm whitespace-nowrap shadow-[0_0_20px_rgba(220,38,38,0.5)]">
+                 <AlertTriangle size={10} className="text-red-400" />
+                 LOAD FAILED
+              </div>
+           </Html>
+           <Box args={[1, 1, 1]}>
+               <meshBasicMaterial color="#ef4444" wireframe />
+           </Box>
+        </group>
       </group>
     );
   }

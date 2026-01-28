@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, Cloud, Package, Trash2, Search, Loader2, AlertCircle, Edit2, 
@@ -8,10 +9,10 @@ import {
   MousePointer2, HardDrive, Move, RotateCw, BoxSelect, Triangle, GripVertical, FolderOpen,
   TriangleRight, Slice, Lock, Unlock, Eye, EyeOff,
   Diamond, Hexagon, Sunset, Battery, CircleDot, Dna, 
-  Shapes, Star, Gem, Filter, Tent, Copy // Added Copy icon
+  Shapes, Star, Gem, Filter, Tent, Copy, ExternalLink, Key, Download
 } from 'lucide-react';
 import { SceneObject, SceneGroup, CloudAsset, BackgroundSettings, PrimitiveType, CameraPreset } from '../types';
-import { search3DModels } from '../services/geminiService';
+import { searchSketchfab, getModelDownloadUrl } from '../services/sketchfabService';
 
 interface AssetPanelProps {
   onAddLocal: (file: File) => void;
@@ -31,23 +32,12 @@ interface AssetPanelProps {
   onUpdate: (id: string, updates: Partial<SceneObject>) => void;
   onUpdateGroup: (id: string, updates: Partial<SceneGroup>) => void;
   onAddGroup: () => void;
-  onDuplicate: (id: string) => void; // Added onDuplicate prop
+  onDuplicate: (id: string) => void; 
   cameraPresets: CameraPreset[];
   onSavePreset: (name: string) => void;
   onLoadPreset: (preset: CameraPreset) => void;
   onDeletePreset: (id: string) => void;
 }
-
-const KHronos_BASE = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0";
-
-const MOCK_CLOUD_ASSETS: CloudAsset[] = [
-  { uid: 'c1', name: 'Vintage Camera', thumbnail: `${KHronos_BASE}/AntiqueCamera/screenshot/screenshot.png`, downloadUrl: `${KHronos_BASE}/AntiqueCamera/glTF-Binary/AntiqueCamera.glb` },
-  { uid: 'c2', name: 'Rubber Duck', thumbnail: `${KHronos_BASE}/Duck/screenshot/screenshot.png`, downloadUrl: `${KHronos_BASE}/Duck/glTF-Binary/Duck.glb` },
-  { uid: 'c3', name: 'Damaged Helmet', thumbnail: `${KHronos_BASE}/DamagedHelmet/screenshot/screenshot.jpg`, downloadUrl: `${KHronos_BASE}/DamagedHelmet/glTF-Binary/DamagedHelmet.glb` },
-  { uid: 'c4', name: 'Avocado', thumbnail: `${KHronos_BASE}/Avocado/screenshot/screenshot.jpg`, downloadUrl: `${KHronos_BASE}/Avocado/glTF-Binary/Avocado.glb` },
-  { uid: 'c5', name: 'Boom Box', thumbnail: `${KHronos_BASE}/BoomBox/screenshot/screenshot.jpg`, downloadUrl: `${KHronos_BASE}/BoomBox/glTF-Binary/BoomBox.glb` },
-  { uid: 'c10', name: 'Buggy Car', thumbnail: `${KHronos_BASE}/Buggy/screenshot/screenshot.jpg`, downloadUrl: `${KHronos_BASE}/Buggy/glTF-Binary/Buggy.glb` },
-];
 
 const PRIMITIVES: { type: PrimitiveType, icon: React.ReactNode, name: string }[] = [
   { type: 'box', icon: <BoxIcon size={16} />, name: 'Box' },
@@ -81,29 +71,77 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
   const [activeTab, setActiveTab] = useState<'local' | 'cloud' | 'shapes' | 'scene' | 'cam' | 'env'>('shapes');
   const [search, setSearch] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [filteredCloud, setFilteredCloud] = useState<CloudAsset[]>(MOCK_CLOUD_ASSETS);
+  const [filteredCloud, setFilteredCloud] = useState<CloudAsset[]>([]);
   const [newPresetName, setNewPresetName] = useState('');
+  
+  // Sketchfab State
+  const [sketchfabToken, setSketchfabToken] = useState('');
+  const [tokenInput, setTokenInput] = useState('');
+  const [isTokenSaved, setIsTokenSaved] = useState(false);
+  const [loadingAssetId, setLoadingAssetId] = useState<string | null>(null);
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
 
   // Drag and Drop State
   const [draggedObjId, setDraggedObjId] = useState<string | null>(null);
-  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null); // 'root' for ungrouped, or groupId
+  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null); 
 
   useEffect(() => {
-    if (activeTab !== 'cloud') return;
-    setFilteredCloud(MOCK_CLOUD_ASSETS.filter(a => a.name.toLowerCase().includes(search.toLowerCase())));
-  }, [search, activeTab]);
+    const savedToken = localStorage.getItem('SKETCHFAB_API_TOKEN');
+    if (savedToken) {
+      setSketchfabToken(savedToken);
+      setTokenInput(savedToken);
+      setIsTokenSaved(true);
+    }
+  }, []);
 
-  const handleAISearch = async () => {
+  const handleSaveToken = () => {
+    localStorage.setItem('SKETCHFAB_API_TOKEN', tokenInput);
+    setSketchfabToken(tokenInput);
+    setIsTokenSaved(true);
+  };
+
+  const handleClearToken = () => {
+    localStorage.removeItem('SKETCHFAB_API_TOKEN');
+    setSketchfabToken('');
+    setTokenInput('');
+    setIsTokenSaved(false);
+  };
+
+  const handleSketchfabSearch = async () => {
     if (!search.trim()) return;
     setIsSearching(true);
     try {
-      const results = await search3DModels(search);
-      setFilteredCloud(prev => [...results, ...prev]);
-    } catch (err) { console.error(err); }
-    finally { setIsSearching(false); }
+      const results = await searchSketchfab(search, sketchfabToken);
+      setFilteredCloud(results);
+    } catch (err) { 
+      console.error(err); 
+      alert("Search failed. Check API Token or internet connection.");
+    } finally { 
+      setIsSearching(false); 
+    }
+  };
+
+  const handleDownloadAndAdd = async (asset: CloudAsset) => {
+    if (!sketchfabToken) {
+      alert("Please enter a valid Sketchfab API Token to download models.");
+      return;
+    }
+    setLoadingAssetId(asset.uid);
+    try {
+      const downloadUrl = await getModelDownloadUrl(asset.uid, sketchfabToken);
+      if (downloadUrl) {
+        onAddCloud({ ...asset, downloadUrl });
+      } else {
+        alert("No suitable GLB/GLTF model found for this asset.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(`Download failed: ${err.message}`);
+    } finally {
+      setLoadingAssetId(null);
+    }
   };
 
   const startEditing = (id: string, currentName: string) => {
@@ -137,7 +175,6 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
        onUpdate(id, { locked: newLocked });
     }
 
-    // If we are locking the currently selected item, deselect it
     if (newLocked && selectedId === id) {
        onSelect(null);
     }
@@ -145,7 +182,6 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
 
   const toggleVisibility = (e: React.MouseEvent, id: string, currentVisible: boolean | undefined, isGroup: boolean) => {
     e.stopPropagation();
-    // Undefined treated as true (visible by default)
     const isVisible = currentVisible !== false;
     const newVisible = !isVisible;
     
@@ -302,24 +338,104 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
         )}
 
         {activeTab === 'cloud' && (
-          <div className="space-y-4">
-            <div className="relative">
-              {isSearching ? <Loader2 className="absolute left-3 top-2.5 text-blue-500 animate-spin" size={14} /> : <Search className="absolute left-3 top-2.5 text-gray-500" size={14} />}
-              <input type="text" placeholder="Search .glb models..." className="w-full bg-[#0a0a0a] border border-[#222] rounded-md pl-9 pr-10 py-2 text-xs text-white focus:outline-none focus:border-blue-500" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAISearch()} />
-              <button onClick={handleAISearch} className="absolute right-2 top-2 text-blue-500 hover:text-blue-400"><Wand2 size={14} /></button>
+          <div className="space-y-6">
+            
+            <div className="p-3 bg-blue-900/10 border border-blue-500/20 rounded-lg space-y-2">
+               <div className="flex items-center justify-between">
+                  <label className="text-[9px] text-blue-400 font-black uppercase tracking-widest flex items-center gap-1">
+                    <Key size={10} /> Sketchfab API Token
+                  </label>
+                  {isTokenSaved && <button onClick={handleClearToken} className="text-[9px] text-red-500 hover:underline">Clear</button>}
+               </div>
+               
+               {isTokenSaved ? (
+                 <div className="flex items-center gap-2 text-green-500 bg-green-500/10 p-2 rounded border border-green-500/20">
+                    <Check size={12} /> <span className="text-[10px] font-mono">Token Active</span>
+                 </div>
+               ) : (
+                 <div className="flex gap-2">
+                    <input 
+                      type="password" 
+                      value={tokenInput} 
+                      onChange={(e) => setTokenInput(e.target.value)} 
+                      placeholder="sk_..." 
+                      className="flex-1 bg-black border border-[#333] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-blue-500"
+                    />
+                    <button onClick={handleSaveToken} className="bg-blue-600 text-white text-[10px] font-bold px-2 rounded hover:bg-blue-500">Save</button>
+                 </div>
+               )}
+               <a href="https://sketchfab.com/settings/password" target="_blank" rel="noreferrer" className="text-[8px] text-gray-500 hover:text-gray-300 flex items-center gap-1 underline decoration-dotted">
+                 Get token from sketchfab.com <ExternalLink size={8} />
+               </a>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {filteredCloud.map((asset) => (
-                <button key={asset.uid} onClick={() => onAddCloud(asset)} className="group relative aspect-square bg-[#0a0a0a] border border-[#222] rounded-md overflow-hidden hover:border-blue-500 transition-all">
-                  <img 
-                    src={asset.thumbnail} 
-                    alt={asset.name} 
-                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = `https://placehold.co/400x400/151515/FFFFFF?text=${encodeURIComponent(asset.name.substring(0, 15))}`;
-                    }}
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-black/80"><p className="text-[9px] text-white truncate text-center">{asset.name}</p></div>
+
+            <div className="space-y-4">
+              <div className="relative">
+                {isSearching ? <Loader2 className="absolute left-3 top-2.5 text-blue-500 animate-spin" size={14} /> : <Search className="absolute left-3 top-2.5 text-gray-500" size={14} />}
+                <input 
+                  type="text" 
+                  placeholder="Search Sketchfab..." 
+                  className="w-full bg-[#0a0a0a] border border-[#222] rounded-md pl-9 pr-10 py-2 text-xs text-white focus:outline-none focus:border-blue-500" 
+                  value={search} 
+                  onChange={(e) => setSearch(e.target.value)} 
+                  onKeyDown={(e) => e.key === 'Enter' && handleSketchfabSearch()} 
+                />
+                <button onClick={handleSketchfabSearch} className="absolute right-2 top-2 text-blue-500 hover:text-blue-400"><Wand2 size={14} /></button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                {filteredCloud.map((asset) => (
+                  <div key={asset.uid} className="group relative bg-[#0a0a0a] border border-[#222] rounded-lg overflow-hidden hover:border-blue-500/50 transition-all flex flex-col">
+                    <div className="relative aspect-video bg-[#111] overflow-hidden">
+                       <img 
+                          src={asset.thumbnail} 
+                          alt={asset.name} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <button 
+                              onClick={() => handleDownloadAndAdd(asset)} 
+                              className="bg-blue-600 hover:bg-blue-500 text-white rounded-full p-2 shadow-lg flex items-center gap-2 px-3"
+                              disabled={loadingAssetId === asset.uid}
+                            >
+                               {loadingAssetId === asset.uid ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                               <span className="text-[9px] font-bold">IMPORT</span>
+                            </button>
+                        </div>
+                        {/* Attribution Overlay */}
+                        <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent pointer-events-none">
+                            <p className="text-[10px] font-bold text-white truncate">{asset.name}</p>
+                            <p className="text-[8px] text-gray-300">by {asset.author}</p>
+                        </div>
+                    </div>
+                    <div className="p-2 bg-[#151515] border-t border-[#222] flex justify-between items-center">
+                        <span className="text-[8px] text-gray-500 border border-gray-700 rounded px-1">{asset.license || 'CC Attribution'}</span>
+                        <a href={asset.modelUrl} target="_blank" rel="noreferrer" className="text-[8px] text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                           View on Sketchfab <ExternalLink size={8} />
+                        </a>
+                    </div>
+                  </div>
+                ))}
+                
+                {filteredCloud.length === 0 && !isSearching && (
+                   <div className="text-center py-8 text-gray-600 text-[10px] border-2 border-dashed border-[#222] rounded-lg">
+                      Search for thousands of high-quality 3D models.
+                   </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ... (Other tabs remain unchanged: shapes, cam, local, scene, env) ... */}
+        {activeTab === 'shapes' && (
+          <div className="space-y-4">
+            <label className="block text-[10px] text-gray-500 uppercase font-black tracking-widest mb-2">Geometric Primitives</label>
+            <div className="grid grid-cols-3 gap-2">
+              {PRIMITIVES.map((p) => (
+                <button key={p.type} onClick={() => onAddPrimitive(p.type)} className="flex flex-col items-center justify-center gap-2 aspect-square bg-[#0a0a0a] border border-[#222] rounded-md hover:border-blue-500 hover:bg-blue-600/5 transition-all group">
+                  <div className="text-gray-500 group-hover:text-blue-400">{p.icon}</div>
+                  <span className="text-[9px] font-black uppercase text-gray-600 group-hover:text-white text-center px-1">{p.name}</span>
                 </button>
               ))}
             </div>
@@ -604,6 +720,15 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                     </div>
                     <p className="mt-2 text-[8px] text-gray-600 leading-tight">Neural renderer will use this image as a style/texture reference specifically for this object.</p>
                   </div>
+
+                  {selectedObject.attribution && (
+                     <div className="bg-[#111] p-3 rounded-lg border border-[#222]">
+                        <h4 className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Asset Attribution</h4>
+                        <p className="text-[9px] text-gray-300">Author: {selectedObject.attribution.author}</p>
+                        <p className="text-[9px] text-gray-300 mb-1">License: {selectedObject.attribution.license}</p>
+                        <a href={selectedObject.attribution.url} target="_blank" rel="noreferrer" className="text-[8px] text-blue-400 underline">View Original Source</a>
+                     </div>
+                  )}
 
                   <div>
                     <h3 className="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-3 flex items-center gap-2"><Palette size={12} /> Color Override</h3>

@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { SceneObject, SceneGroup, CloudAsset, TransformMode, BackgroundSettings, PrimitiveType, CameraPreset } from './types';
 import AssetPanel from './components/AssetPanel';
@@ -121,6 +122,13 @@ const App: React.FC = () => {
 
   const handleAddCloud = useCallback((asset: CloudAsset) => {
     recordHistory(objects, groups);
+    
+    // Safety check for URL
+    if (!asset.downloadUrl) {
+        showStatus("ERROR: NO DOWNLOAD URL");
+        return;
+    }
+
     const newObj: SceneObject = {
       id: Math.random().toString(36).substr(2, 9),
       name: asset.name,
@@ -129,10 +137,16 @@ const App: React.FC = () => {
       rotation: [0, 0, 0],
       scale: [1, 1, 1],
       type: 'cloud',
-      format: 'glb'
+      format: 'glb',
+      attribution: (asset.author && asset.modelUrl) ? {
+        author: asset.author,
+        url: asset.modelUrl,
+        license: asset.license || 'Unknown'
+      } : undefined
     };
     setObjects((prev) => [...prev, newObj]);
     setSelectedId(newObj.id);
+    showStatus("ASSET ADDED");
   }, [objects, groups, recordHistory]);
 
   const handleAddPrimitive = useCallback((type: PrimitiveType) => {

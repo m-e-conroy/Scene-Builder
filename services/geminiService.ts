@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { CloudAsset, SceneObject, SceneGroup } from "../types";
 
@@ -10,6 +11,11 @@ export const sanitizeModelUrl = (url: string): string => {
     sanitized = sanitized
       .replace('github.com', 'raw.githubusercontent.com')
       .replace('/blob/', '/');
+  }
+
+  // Convert Hugging Face blob links to resolve links
+  if (sanitized.includes('huggingface.co') && sanitized.includes('/blob/')) {
+    sanitized = sanitized.replace('/blob/', '/resolve/');
   }
   
   return sanitized;
@@ -213,51 +219,6 @@ export const processSceneToImage = async (
   } catch (error) {
     console.error("Gemini AI Transformation Error:", error);
     return null;
-  }
-};
-
-/**
- * Searches for public 3D models (.glb) using Gemini with Google Search.
- */
-export const search3DModels = async (query: string): Promise<CloudAsset[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Search for high-quality, public domain .glb 3D models for: "${query}". 
-      
-      Return a JSON array of objects with "name", "downloadUrl", and "thumbnail".`,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              downloadUrl: { type: Type.STRING },
-              thumbnail: { type: Type.STRING }
-            },
-            required: ["name", "downloadUrl"]
-          }
-        }
-      },
-    });
-
-    const results = JSON.parse(response.text || "[]");
-    return results.map((item: any, index: number) => ({
-      uid: `ai-search-${index}-${Date.now()}`,
-      name: item.name,
-      downloadUrl: sanitizeModelUrl(item.downloadUrl),
-      thumbnail: item.thumbnail && item.thumbnail.startsWith('http') 
-        ? item.thumbnail 
-        : `https://placehold.co/400x400/111/444?text=${encodeURIComponent(item.name)}`
-    }));
-  } catch (error) {
-    console.error("3D Search Error:", error);
-    return [];
   }
 };
 
