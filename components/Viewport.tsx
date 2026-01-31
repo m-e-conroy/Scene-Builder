@@ -29,6 +29,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader';
 import { SceneObject, SceneGroup, TransformMode, BackgroundSettings, CameraPreset } from '../types';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
+import ProceduralTerrain from './ProceduralTerrain';
 
 // Shared loaders
 const dracoLoader = new DRACOLoader();
@@ -257,7 +258,7 @@ const Model: React.FC<ModelProps> = ({
   obj, isLocked, isVisible, onSelect, onRegisterRef
 }) => {
   const { gl } = useThree();
-  const [loading, setLoading] = useState(obj.type !== 'primitive');
+  const [loading, setLoading] = useState(obj.type !== 'primitive' && obj.type !== 'terrain');
   const [loadedScene, setLoadedScene] = useState<THREE.Group | null>(null);
   const [hasError, setHasError] = useState(false);
   
@@ -269,7 +270,7 @@ const Model: React.FC<ModelProps> = ({
   }, [gl]);
 
   useEffect(() => {
-    if (obj.type === 'primitive') {
+    if (obj.type === 'primitive' || obj.type === 'terrain') {
       setLoading(false);
       return;
     }
@@ -327,7 +328,7 @@ const Model: React.FC<ModelProps> = ({
   }, [obj.id, onRegisterRef, loading, hasError]);
 
   const processedScene = useMemo(() => {
-    if (obj.type === 'primitive' || !loadedScene) return null;
+    if ((obj.type === 'primitive' || obj.type === 'terrain') || !loadedScene) return null;
     const clone = loadedScene.clone(true);
     
     // 1. Sanitize geometry to prevent NaN errors in bounding box calculations
@@ -404,6 +405,23 @@ const Model: React.FC<ModelProps> = ({
     }
   };
 
+  const renderContent = () => {
+    if (obj.type === 'terrain' && obj.terrainData) {
+      return (
+        <ProceduralTerrain 
+          data={obj.terrainData} 
+          color={obj.color} 
+          shadowProps={{ castShadow: true, receiveShadow: true }}
+          interactionProps={{ raycast: isLocked ? () => null : undefined }}
+        />
+      );
+    }
+    if (obj.type === 'primitive') {
+      return renderPrimitive();
+    }
+    return processedScene && <primitive object={processedScene} />;
+  };
+
   if (loading) {
     return (
       <group position={obj.position}>
@@ -446,10 +464,38 @@ const Model: React.FC<ModelProps> = ({
         e.stopPropagation(); 
         onSelect(obj.id); 
       }}>
-        {obj.type === 'primitive' ? renderPrimitive() : (processedScene && <primitive object={processedScene} />)}
+        {renderContent()}
       </group>
     </group>
   );
+};
+
+// Group Component
+const GroupModel: React.FC<{
+    group: SceneGroup;
+    children: React.ReactNode;
+    isLocked: boolean;
+    isVisible: boolean;
+    onSelect: (id: string) => void;
+    onRegisterRef: (id: string, ref: THREE.Object3D | null) => void;
+}> = ({ group, children, isLocked, isVisible, onSelect, onRegisterRef }) => {
+    const groupRef = useRef<THREE.Group>(null);
+    useEffect(() => {
+        if (groupRef.current) onRegisterRef(group.id, groupRef.current);
+        return () => onRegisterRef(group.id, null);
+    }, [group.id, onRegisterRef]);
+
+    return (
+        <group
+            ref={groupRef}
+            position={group.position || [0,0,0]}
+            rotation={group.rotation || [0,0,0]}
+            scale={group.scale || [1,1,1]}
+            visible={isVisible}
+        >
+            {children}
+        </group>
+    );
 };
 
 interface ViewportProps {
@@ -460,312 +506,161 @@ interface ViewportProps {
   onRemove: (id: string) => void;
   transformMode: TransformMode;
   onUpdate: (id: string, updates: Partial<SceneObject>) => void;
+  onUpdateGroup: (id: string, updates: Partial<SceneGroup>) => void;
   onUpdateMany: (updates: { id: string, updates: Partial<SceneObject> }[]) => void;
-  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  canvasRef: React.RefObject<HTMLCanvasElement>;
   snapEnabled: boolean;
   snapSize: number;
   bgSettings: BackgroundSettings;
-  showGrid?: boolean;
+  showGrid: boolean;
   activeCameraPreset: CameraPreset | null;
   onCameraPresetProcessed: () => void;
   onSetCapturedView: (pos: [number, number, number], target: [number, number, number]) => void;
 }
 
 const Viewport: React.FC<ViewportProps> = ({ 
-  objects, groups, selectedId, onSelect, onRemove, transformMode, onUpdate, onUpdateMany, canvasRef, 
-  snapEnabled, snapSize, bgSettings, showGrid = true, 
-  activeCameraPreset, onCameraPresetProcessed, onSetCapturedView
+  objects, groups, selectedId, onSelect, onRemove, transformMode, 
+  onUpdate, onUpdateGroup, onUpdateMany, canvasRef, snapEnabled, snapSize, 
+  bgSettings, showGrid, activeCameraPreset, onCameraPresetProcessed, onSetCapturedView 
 }) => {
-  const [orbitEnabled, setOrbitEnabled] = useState(true);
-  const modelRefs = useRef<Map<string, THREE.Object3D>>(new Map());
-  const pivotRef = useRef<THREE.Group>(null);
-  const boxHelperRef = useRef<THREE.BoxHelper>(null);
-  const orbitControlsRef = useRef<any>(null);
-  const [activeTarget, setActiveTarget] = useState<THREE.Object3D | null>(null);
-  
-  // Track selectedId in a ref to access it inside callbacks without dependencies
-  const selectedIdRef = useRef(selectedId);
-  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+  const controlsRef = useRef<any>(null);
+  const transformRef = useRef<any>(null);
+  const [objectRefs, setObjectRefs] = useState<Record<string, THREE.Object3D>>({});
 
-  // Store initial offsets for group transformation
-  const dragOffsets = useRef<Map<string, THREE.Matrix4>>(new Map());
-
-  // Helper to determine if an object is locked (directly or via group)
-  const isObjectLocked = useCallback((obj: SceneObject) => {
-    return !!(obj.locked || (obj.groupId && groups.find(g => g.id === obj.groupId)?.locked));
-  }, [groups]);
-
-  // Helper to determine if an object is visible
-  const isObjectVisible = useCallback((obj: SceneObject) => {
-    if (obj.visible === false) return false;
-    if (obj.groupId) {
-      const group = groups.find(g => g.id === obj.groupId);
-      if (group && group.visible === false) return false;
-    }
-    return true;
-  }, [groups]);
-
-  // Check if current selection is locked
-  const isSelectionLocked = useMemo(() => {
-    if (!selectedId) return false;
-    const group = groups.find(g => g.id === selectedId);
-    if (group) return !!group.locked;
-    const obj = objects.find(o => o.id === selectedId);
-    if (obj) return isObjectLocked(obj);
-    return false;
-  }, [selectedId, groups, objects, isObjectLocked]);
-
-  // Check if current selection is visible
-  const isSelectionVisible = useMemo(() => {
-    if (!selectedId) return false;
-    const group = groups.find(g => g.id === selectedId);
-    if (group) return group.visible !== false;
-    const obj = objects.find(o => o.id === selectedId);
-    if (obj) return isObjectVisible(obj);
-    return false;
-  }, [selectedId, groups, objects, isObjectVisible]);
-
-  // Updated Registration Logic: Checks if the incoming model is the currently 
-  // selected one. If so, attaches it immediately.
-  const registerModelRef = useCallback((id: string, ref: THREE.Object3D | null) => {
-    if (ref) {
-      modelRefs.current.set(id, ref);
-      if (id === selectedIdRef.current) {
-        setActiveTarget(ref);
-      }
-    } else {
-      modelRefs.current.delete(id);
-      if (id === selectedIdRef.current) {
-        // Only clear if the deleted ID is the current target's ID
-        setActiveTarget((prev) => {
-          // If we could check prev === ref it would be ideal, but ref is null here.
-          // We assume if the ID matches the selected ID, we should clear it.
-          // This prevents stale references.
-          return null;
-        });
-      }
-    }
+  const handleRegisterRef = useCallback((id: string, ref: THREE.Object3D | null) => {
+    setObjectRefs(prev => {
+        if (!ref) {
+            const { [id]: _, ...rest } = prev;
+            return rest;
+        }
+        return { ...prev, [id]: ref };
+    });
   }, []);
 
-  const selectedGroup = useMemo(() => groups.find(g => g.id === selectedId), [groups, selectedId]);
-  const objectsInSelectedGroup = useMemo(() => objects.filter(o => o.groupId === selectedId), [objects, selectedId]);
-
-  // --- Group Transformation Logic (Stateless Driver Approach) ---
-
-  // When selection changes or objects update, reposition the pivot to the center of the group
+  // Handle Transform Controls changes
   useEffect(() => {
-    if (selectedGroup && pivotRef.current) {
-      // 1. Calculate Bounding Box of the Group
-      const box = new THREE.Box3();
-      let hasObjects = false;
-      objectsInSelectedGroup.forEach(obj => {
-        const ref = modelRefs.current.get(obj.id);
-        if (ref && isObjectVisible(obj)) { // Only include visible objects in pivot calculation? Optional, but safer.
-          ref.updateMatrixWorld();
-          box.expandByObject(ref);
-          hasObjects = true;
-        }
-      });
-      
-      if (hasObjects && !box.isEmpty()) {
-        const center = new THREE.Vector3();
-        box.getCenter(center);
-        
-        if (!isNaN(center.x)) {
-           // 2. Move Pivot to Center (resetting rotation/scale to neutral)
-           pivotRef.current.position.copy(center);
-           pivotRef.current.rotation.set(0,0,0);
-           pivotRef.current.scale.set(1,1,1);
-           pivotRef.current.updateMatrixWorld();
-           
-           // 3. Set Pivot as the TransformControl target
-           setActiveTarget(pivotRef.current);
-        }
-      } else {
-        // Empty group, just put pivot at origin
-        pivotRef.current.position.set(0,0,0);
-        setActiveTarget(pivotRef.current);
-      }
-    } else if (selectedId) {
-      // Single object selection
-      const ref = modelRefs.current.get(selectedId);
-      // We still try to set it here for cases where model is already loaded
-      if (ref) setActiveTarget(ref);
-    } else {
-      setActiveTarget(null);
+    if (transformRef.current) {
+        const controls = transformRef.current;
+        const onDraggingChanged = (event: any) => {
+            if (controlsRef.current) controlsRef.current.enabled = !event.value;
+            if (!event.value && controls.object) {
+                // Drag finished, commit changes
+                const targetObj = controls.object;
+                const targetId = Object.keys(objectRefs).find(key => objectRefs[key] === targetObj);
+                
+                if (targetId) {
+                    // Check if it's a group
+                    const isGroup = groups.find(g => g.id === targetId);
+                    const transforms = {
+                        position: targetObj.position.toArray(),
+                        rotation: targetObj.rotation.toArray().slice(0, 3) as [number, number, number],
+                        scale: targetObj.scale.toArray()
+                    };
+
+                    if (isGroup) {
+                        onUpdateGroup(targetId, transforms);
+                    } else {
+                        onUpdate(targetId, transforms);
+                    }
+                }
+            }
+        };
+
+        controls.addEventListener('dragging-changed', onDraggingChanged);
+        return () => controls.removeEventListener('dragging-changed', onDraggingChanged);
     }
-  }, [selectedId, selectedGroup, objectsInSelectedGroup, isObjectVisible]);
+  }, [objectRefs, onUpdate, onUpdateGroup, groups]);
 
+  const selectedRef = selectedId ? objectRefs[selectedId] : null;
 
-  // 1. On Drag Start: Capture the relative transform of every object to the pivot
-  const onTransformStart = useCallback(() => {
-     setOrbitEnabled(false);
-     if (selectedGroup && pivotRef.current) {
-        dragOffsets.current.clear();
-        pivotRef.current.updateMatrixWorld();
-        const pivotInv = pivotRef.current.matrixWorld.clone().invert();
-        
-        objectsInSelectedGroup.forEach(obj => {
-           const ref = modelRefs.current.get(obj.id);
-           if (ref) {
-              ref.updateMatrixWorld();
-              // Calculate: LocalOffset = PivotInverse * ObjectWorld
-              const localMatrix = new THREE.Matrix4().multiplyMatrices(pivotInv, ref.matrixWorld);
-              dragOffsets.current.set(obj.id, localMatrix);
-           }
-        });
-     }
-  }, [selectedGroup, objectsInSelectedGroup]);
-
-  // 2. On Drag Change: Apply transforms manually from Pivot -> Objects
-  const onTransformChange = useCallback(() => {
-     if (boxHelperRef.current) boxHelperRef.current.update();
-     
-     if (selectedGroup && pivotRef.current) {
-        // The pivot has moved/rotated/scaled. Update objects to match.
-        const pivotMatrix = pivotRef.current.matrixWorld;
-        
-        objectsInSelectedGroup.forEach(obj => {
-           const ref = modelRefs.current.get(obj.id);
-           const offset = dragOffsets.current.get(obj.id);
-           
-           if (ref && offset) {
-              // NewObjectWorld = NewPivotWorld * LocalOffset
-              const newWorld = new THREE.Matrix4().multiplyMatrices(pivotMatrix, offset);
-              
-              const pos = new THREE.Vector3();
-              const quat = new THREE.Quaternion();
-              const scale = new THREE.Vector3();
-              
-              newWorld.decompose(pos, quat, scale);
-              
-              // Apply directly to the ref (bypassing React for performance/smoothness)
-              ref.position.copy(pos);
-              ref.quaternion.copy(quat);
-              ref.scale.copy(scale);
-              ref.updateMatrixWorld();
-           }
-        });
-     }
-  }, [selectedGroup, objectsInSelectedGroup]);
-
-  // 3. On Drag End: Commit final positions to React State
-  const onTransformEnd = useCallback(() => {
-     setOrbitEnabled(true);
-     dragOffsets.current.clear();
-     
-     if (selectedGroup) {
-        const updates = objectsInSelectedGroup.map(obj => {
-           const ref = modelRefs.current.get(obj.id);
-           if (!ref) return null;
-           
-           // Read the final world transform we just applied
-           const r = new THREE.Euler().setFromQuaternion(ref.quaternion);
-           
-           return {
-              id: obj.id,
-              updates: {
-                 position: [ref.position.x, ref.position.y, ref.position.z] as [number, number, number],
-                 rotation: [r.x, r.y, r.z] as [number, number, number],
-                 scale: [ref.scale.x, ref.scale.y, ref.scale.z] as [number, number, number]
-              }
-           };
-        }).filter(Boolean) as { id: string, updates: Partial<SceneObject> }[];
-        
-        onUpdateMany(updates);
-     } else if (selectedId && activeTarget) {
-         // Single object update
-         const ref = activeTarget;
-         const r = new THREE.Euler().setFromQuaternion(ref.quaternion);
-         onUpdate(selectedId, {
-             position: [ref.position.x, ref.position.y, ref.position.z],
-             rotation: [r.x, r.y, r.z],
-             scale: [ref.scale.x, ref.scale.y, ref.scale.z],
-         });
-     }
-  }, [selectedGroup, objectsInSelectedGroup, onUpdate, onUpdateMany, selectedId, activeTarget]);
-
-  // Expose current camera view for saving
-  const handleCaptureView = useCallback(() => {
-    if (orbitControlsRef.current) {
-      const cam = orbitControlsRef.current.object;
-      const target = orbitControlsRef.current.target;
-      onSetCapturedView(
-        [cam.position.x, cam.position.y, cam.position.z],
-        [target.x, target.y, target.z]
-      );
-    }
+  // Capture View function exposed to window for the "Save Preset" feature in AssetPanel
+  useEffect(() => {
+    (window as any).captureCurrentView = () => {
+        if (controlsRef.current) {
+            const pos = controlsRef.current.object.position.toArray();
+            const target = controlsRef.current.target.toArray();
+            onSetCapturedView(pos, target);
+        }
+    };
+    return () => { (window as any).captureCurrentView = undefined; };
   }, [onSetCapturedView]);
 
-  useEffect(() => {
-    (window as any).captureCurrentView = handleCaptureView;
-  }, [handleCaptureView]);
-
   return (
-    <div className="flex-1 h-full relative bg-[#050505] overflow-hidden">
-      <Canvas 
-        shadows 
-        camera={{ position: [5, 5, 5], fov: 45 }} 
-        dpr={[1, 1.5]}
-        gl={{ preserveDrawingBuffer: true, antialias: true, powerPreference: 'high-performance' }} 
-        onPointerMissed={() => onSelect(null)}
+    <div className="flex-1 relative bg-[#050505] overflow-hidden">
+      <Canvas
         ref={canvasRef}
+        shadows
+        gl={{ preserveDrawingBuffer: true, antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
+        camera={{ position: [10, 10, 10], fov: 50 }}
+        dpr={[1, 2]}
       >
-        <color attach="background" args={['#080808']} />
-        <ambientLight intensity={1.5} />
-        <spotLight position={[10, 10, 10]} angle={0.15} intensity={100} castShadow />
-        
-        <Suspense fallback={<Html center><div className="flex flex-col items-center gap-4 bg-black/90 p-8 rounded-2xl border border-white/10"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div><span className="text-[10px] text-white font-black tracking-widest uppercase">Warming Up GPU...</span></div></Html>}>
-          <Background settings={bgSettings} />
-          
-          <group>
-            {objects.map((obj) => (
-              <Model 
-                key={obj.id} 
-                obj={obj}
-                isLocked={isObjectLocked(obj)}
-                isVisible={isObjectVisible(obj)}
-                onSelect={onSelect} 
-                onRegisterRef={registerModelRef}
-              />
-            ))}
-          </group>
+        <Suspense fallback={null}>
+            <Environment preset="city" />
+            <ambientLight intensity={0.5} />
+            <directionalLight 
+                position={[10, 10, 5]} 
+                intensity={1} 
+                castShadow 
+                shadow-mapSize={[2048, 2048]} 
+            />
+            <ContactShadows resolution={1024} scale={50} blur={1} opacity={0.5} far={10} color="#000000" />
+            
+            <Background settings={bgSettings} />
+            
+            {showGrid && <Grid infiniteGrid fadeDistance={50} sectionColor="#444" cellColor="#222" />}
 
-          {/* Invisible Pivot Group used as a driver for transformations */}
-          <group ref={pivotRef} />
+            <group>
+                {/* Render ungrouped objects */}
+                {objects.filter(o => !o.groupId).map(obj => (
+                    <Model 
+                        key={obj.id} 
+                        obj={obj} 
+                        isLocked={!!obj.locked}
+                        isVisible={obj.visible !== false}
+                        onSelect={onSelect}
+                        onRegisterRef={handleRegisterRef}
+                    />
+                ))}
 
-          {activeTarget && !isSelectionLocked && isSelectionVisible && (
-            <>
-              <TransformControls 
-                key={activeTarget.uuid}
-                object={activeTarget}
-                mode={transformMode}
-                translationSnap={snapEnabled ? snapSize : null}
-                rotationSnap={snapEnabled ? Math.PI / 12 : null}
-                scaleSnap={snapEnabled ? (snapSize / 10) : null}
-                onMouseDown={onTransformStart}
-                onChange={onTransformChange}
-                onMouseUp={onTransformEnd}
-              />
-              <boxHelper 
-                ref={boxHelperRef} 
-                args={[activeTarget, selectedGroup ? 0x2563eb : 0x3b82f6]} 
-              />
-            </>
-          )}
+                {/* Render groups */}
+                {groups.map(grp => (
+                    <GroupModel 
+                        key={grp.id}
+                        group={grp}
+                        isLocked={!!grp.locked}
+                        isVisible={grp.visible !== false}
+                        onSelect={onSelect}
+                        onRegisterRef={handleRegisterRef}
+                    >
+                         {objects.filter(o => o.groupId === grp.id).map(obj => (
+                            <Model 
+                                key={obj.id} 
+                                obj={obj} 
+                                isLocked={!!obj.locked || !!grp.locked}
+                                isVisible={obj.visible !== false && grp.visible !== false}
+                                onSelect={onSelect}
+                                onRegisterRef={handleRegisterRef}
+                            />
+                        ))}
+                    </GroupModel>
+                ))}
+            </group>
 
-          <Environment preset="city" />
-          <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={20} blur={2.4} far={4.5} />
-          
-          <CameraManager 
-            activePreset={activeCameraPreset} 
-            onPresetProcessed={onCameraPresetProcessed} 
-            controlsRef={orbitControlsRef} 
-          />
+            {selectedRef && selectedRef.parent && (
+                <TransformControls 
+                    key={selectedId}
+                    ref={transformRef}
+                    object={selectedRef}
+                    mode={transformMode}
+                    translationSnap={snapEnabled ? snapSize : null}
+                    rotationSnap={snapEnabled ? Math.PI / 12 : null}
+                    scaleSnap={snapEnabled ? 0.1 : null}
+                />
+            )}
+
+            <OrbitControls ref={controlsRef} makeDefault />
+            <CameraManager activePreset={activeCameraPreset} onPresetProcessed={onCameraPresetProcessed} controlsRef={controlsRef} />
         </Suspense>
-
-        <OrbitControls ref={orbitControlsRef} makeDefault enabled={orbitEnabled} maxPolarAngle={Math.PI / 2.1} />
-        {showGrid && <Grid infiniteGrid fadeDistance={30} cellSize={snapSize} sectionSize={snapSize * 5} sectionThickness={1.5} sectionColor="#333" cellColor="#222" />}
       </Canvas>
     </div>
   );

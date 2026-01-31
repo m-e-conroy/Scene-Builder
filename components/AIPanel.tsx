@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { 
   Sparkles, Sliders, Image as ImageIcon, Loader2, Info, Maximize2, 
   Sun, Trash2, Upload, Wand2, Plus, Check, Lightbulb, Camera, 
-  Zap, Palette, Tag, BrainCircuit, X
+  Zap, Palette, Tag, BrainCircuit, X, Save
 } from 'lucide-react';
 import { enhancePrompt } from '../services/geminiService';
+import { StylePreset } from '../types';
 
 interface AIPanelProps {
   prompt: string;
@@ -17,15 +18,11 @@ interface AIPanelProps {
   onOpenPreview: () => void;
   lightingReference: string | null;
   setLightingReference: (url: string | null) => void;
+  stylePresets: StylePreset[];
+  onSaveStylePreset: (name: string) => void;
+  onApplyStylePreset: (preset: StylePreset) => void;
+  onDeleteStylePreset: (id: string) => void;
 }
-
-const TEMPLATES = [
-  { label: "Cinematic Reality", prompt: "Cinematic shot, highly detailed, photorealistic, 8k resolution, dramatic lighting, depth of field" },
-  { label: "Studio Product", prompt: "Studio photography, professional lighting, clean background, sharp focus, 4k, product advertisement" },
-  { label: "Architectural", prompt: "Architectural visualization, modern design, interior lighting, wide angle, hyper-realistic, unreal engine 5" },
-  { label: "Sci-Fi Concept", prompt: "Futuristic sci-fi concept art, neon lights, cyberpunk aesthetic, volumetric fog, digital art, trending on artstation" },
-  { label: "Fantasy", prompt: "Fantasy environment, magical atmosphere, ethereal lighting, painterly style, matte painting, masterpiece" }
-];
 
 const KEYWORD_CATEGORIES = {
   Lighting: { icon: <Lightbulb size={12} />, words: ["Golden Hour", "Soft Box", "Volumetric Fog", "Neon Lights", "Rim Lighting", "Global Illumination", "Cinematic Lighting", "Dark & Moody"] },
@@ -36,9 +33,10 @@ const KEYWORD_CATEGORIES = {
 
 const AIPanel: React.FC<AIPanelProps> = ({ 
   prompt, setPrompt, strength, setStrength, onGenerate, isGenerating, resultImage, onOpenPreview,
-  lightingReference, setLightingReference
+  lightingReference, setLightingReference, stylePresets, onSaveStylePreset, onApplyStylePreset, onDeleteStylePreset
 }) => {
-  const [showTemplates, setShowTemplates] = useState(false);
+  const [showPresets, setShowPresets] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
   const [activeKeywordTab, setActiveKeywordTab] = useState<keyof typeof KEYWORD_CATEGORIES>('Lighting');
   const [isRefining, setIsRefining] = useState(false);
 
@@ -72,17 +70,6 @@ const AIPanel: React.FC<AIPanelProps> = ({
     }
   };
 
-  const applyTemplate = (templatePrompt: string) => {
-    if (prompt.trim().length > 0) {
-      if (window.confirm("Replace current prompt with template?")) {
-        setPrompt(templatePrompt);
-      }
-    } else {
-      setPrompt(templatePrompt);
-    }
-    setShowTemplates(false);
-  };
-
   const handleEnhance = async () => {
     if (!prompt.trim() || isRefining) return;
     setIsRefining(true);
@@ -94,6 +81,23 @@ const AIPanel: React.FC<AIPanelProps> = ({
     } finally {
       setIsRefining(false);
     }
+  };
+
+  const handleSavePresetClick = () => {
+    if (newPresetName.trim()) {
+        onSaveStylePreset(newPresetName);
+        setNewPresetName('');
+    }
+  };
+
+  const applyPreset = (preset: StylePreset) => {
+    if (prompt.trim().length > 0) {
+        if (!window.confirm("Overwrite current configuration with this preset?")) {
+            return;
+        }
+    }
+    onApplyStylePreset(preset);
+    setShowPresets(false);
   };
 
   return (
@@ -122,27 +126,53 @@ const AIPanel: React.FC<AIPanelProps> = ({
                    </button>
 
                    <button 
-                      onClick={() => setShowTemplates(!showTemplates)}
-                      className={`p-1 rounded transition-colors ${showTemplates ? 'bg-blue-600 text-white' : 'bg-[#222] text-gray-400 hover:text-white'}`}
-                      title="Templates"
+                      onClick={() => setShowPresets(!showPresets)}
+                      className={`p-1 rounded transition-colors ${showPresets ? 'bg-blue-600 text-white' : 'bg-[#222] text-gray-400 hover:text-white'}`}
+                      title="Style Presets"
                    >
-                      <Wand2 size={10} />
+                      <Tag size={10} />
                    </button>
                 </div>
              </div>
 
-             {showTemplates && (
-                <div className="bg-[#1a1a1a] border border-[#333] rounded-lg p-2 mb-2 grid grid-cols-1 gap-1 animate-in slide-in-from-top-2">
-                   {TEMPLATES.map(t => (
+             {/* Style Presets Panel */}
+             {showPresets && (
+                <div className="bg-[#1a1a1a] border border-[#333] rounded-lg p-2 mb-2 animate-in slide-in-from-top-2">
+                   <div className="mb-2 pb-2 border-b border-[#333] flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="New Preset Name..." 
+                        value={newPresetName}
+                        onChange={(e) => setNewPresetName(e.target.value)}
+                        className="flex-1 bg-[#111] border border-[#333] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-blue-500"
+                      />
                       <button 
-                        key={t.label} 
-                        onClick={() => applyTemplate(t.prompt)}
-                        className="text-left px-2 py-1.5 hover:bg-[#252525] rounded text-[10px] text-gray-300 flex items-center gap-2 group"
+                         onClick={handleSavePresetClick}
+                         disabled={!newPresetName.trim()}
+                         className="px-2 bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                         <Tag size={10} className="text-blue-500 opacity-0 group-hover:opacity-100" />
-                         {t.label}
+                         <Save size={10} />
                       </button>
-                   ))}
+                   </div>
+                   <div className="max-h-40 overflow-y-auto space-y-1 scrollbar-hide">
+                      {stylePresets.length === 0 && <p className="text-[9px] text-gray-600 text-center py-2">No presets saved.</p>}
+                      {stylePresets.map(preset => (
+                          <div key={preset.id} className="flex items-center justify-between group px-2 py-1.5 hover:bg-[#252525] rounded transition-colors">
+                              <button 
+                                onClick={() => applyPreset(preset)}
+                                className="flex-1 text-left text-[10px] text-gray-300 group-hover:text-white truncate"
+                              >
+                                {preset.name}
+                                {preset.isSystem && <span className="ml-1 text-[8px] text-gray-500 bg-gray-800 px-1 rounded-sm">DEF</span>}
+                              </button>
+                              {!preset.isSystem && (
+                                <button onClick={(e) => { e.stopPropagation(); onDeleteStylePreset(preset.id); }} className="text-gray-600 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Trash2 size={10} />
+                                </button>
+                              )}
+                          </div>
+                      ))}
+                   </div>
                 </div>
              )}
 

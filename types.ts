@@ -7,6 +7,19 @@ export interface SceneGroup {
   isOpen: boolean;
   locked?: boolean;
   visible?: boolean;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
+}
+
+export interface TerrainData {
+  width: number;
+  depth: number;
+  segments: number;
+  roughness: number;
+  elevation: number;
+  seed: number;
+  waterLevel: number; // 0 to 1, if noise < this, flatten it
 }
 
 export interface SceneObject {
@@ -17,9 +30,10 @@ export interface SceneObject {
   rotation: [number, number, number];
   scale: [number, number, number];
   color?: string;
-  type: 'local' | 'cloud' | 'primitive';
+  type: 'local' | 'cloud' | 'primitive' | 'terrain';
   format?: 'glb' | 'gltf' | 'obj'; // Added to support multiple formats
   primitiveType?: PrimitiveType;
+  terrainData?: TerrainData; // Specific data for terrain objects
   groupId?: string; // Reference to a SceneGroup
   referenceImageUrl?: string; // AI Reference Image
   locked?: boolean;
@@ -54,6 +68,15 @@ export interface CameraPreset {
   name: string;
   position: [number, number, number];
   target: [number, number, number];
+  isSystem?: boolean;
+}
+
+export interface StylePreset {
+  id: string;
+  name: string;
+  prompt: string;
+  strength: number;
+  lightingReference?: string | null;
   isSystem?: boolean;
 }
 
