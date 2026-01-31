@@ -29,6 +29,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader';
 import { SceneObject, SceneGroup, TransformMode, BackgroundSettings, CameraPreset } from '../types';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
+import ProceduralTerrain from './ProceduralTerrain';
 
 // Shared loaders
 const dracoLoader = new DRACOLoader();
@@ -257,7 +258,8 @@ const Model: React.FC<ModelProps> = ({
   obj, isLocked, isVisible, onSelect, onRegisterRef
 }) => {
   const { gl } = useThree();
-  const [loading, setLoading] = useState(obj.type !== 'primitive');
+  // Do not load external file if it is primitive OR terrain
+  const [loading, setLoading] = useState(obj.type !== 'primitive' && obj.type !== 'terrain');
   const [loadedScene, setLoadedScene] = useState<THREE.Group | null>(null);
   const [hasError, setHasError] = useState(false);
   
@@ -269,7 +271,8 @@ const Model: React.FC<ModelProps> = ({
   }, [gl]);
 
   useEffect(() => {
-    if (obj.type === 'primitive') {
+    // Skip loading for primitives and terrain
+    if (obj.type === 'primitive' || obj.type === 'terrain') {
       setLoading(false);
       return;
     }
@@ -327,7 +330,7 @@ const Model: React.FC<ModelProps> = ({
   }, [obj.id, onRegisterRef, loading, hasError]);
 
   const processedScene = useMemo(() => {
-    if (obj.type === 'primitive' || !loadedScene) return null;
+    if (obj.type === 'primitive' || obj.type === 'terrain' || !loadedScene) return null;
     const clone = loadedScene.clone(true);
     
     // 1. Sanitize geometry to prevent NaN errors in bounding box calculations
@@ -404,6 +407,21 @@ const Model: React.FC<ModelProps> = ({
     }
   };
 
+  const renderContent = () => {
+    if (obj.type === 'terrain' && obj.terrainData) {
+      return (
+        <ProceduralTerrain 
+          data={obj.terrainData}
+          color={obj.color}
+          shadowProps={{ castShadow: true, receiveShadow: true }}
+          interactionProps={{ raycast: isLocked ? () => null : undefined }}
+        />
+      );
+    }
+    if (obj.type === 'primitive') return renderPrimitive();
+    return processedScene && <primitive object={processedScene} />;
+  }
+
   if (loading) {
     return (
       <group position={obj.position}>
@@ -446,7 +464,7 @@ const Model: React.FC<ModelProps> = ({
         e.stopPropagation(); 
         onSelect(obj.id); 
       }}>
-        {obj.type === 'primitive' ? renderPrimitive() : (processedScene && <primitive object={processedScene} />)}
+        {renderContent()}
       </group>
     </group>
   );

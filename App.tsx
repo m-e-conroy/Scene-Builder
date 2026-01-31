@@ -1,6 +1,5 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { SceneObject, SceneGroup, CloudAsset, TransformMode, BackgroundSettings, PrimitiveType, CameraPreset } from './types';
+import { SceneObject, SceneGroup, CloudAsset, TransformMode, BackgroundSettings, PrimitiveType, CameraPreset, StylePreset } from './types';
 import AssetPanel from './components/AssetPanel';
 import AIPanel from './components/AIPanel';
 import Viewport from './components/Viewport';
@@ -13,6 +12,14 @@ const DEFAULT_CAMERA_PRESETS: CameraPreset[] = [
   { id: 'cam-top', name: 'Top (Orthogonal)', position: [0, 15, 0.001], target: [0, 0, 0], isSystem: true },
   { id: 'cam-front', name: 'Front (Orthogonal)', position: [0, 0, 15], target: [0, 0, 0], isSystem: true },
   { id: 'cam-side', name: 'Side (Orthogonal)', position: [15, 0, 0], target: [0, 0, 0], isSystem: true },
+];
+
+const DEFAULT_STYLE_PRESETS: StylePreset[] = [
+  { id: 'style-cinematic', name: 'Cinematic Reality', prompt: "Cinematic shot, highly detailed, photorealistic, 8k resolution, dramatic lighting, depth of field", strength: 0.55, isSystem: true },
+  { id: 'style-studio', name: 'Studio Product', prompt: "Studio photography, professional lighting, clean background, sharp focus, 4k, product advertisement", strength: 0.45, isSystem: true },
+  { id: 'style-arch', name: 'Architectural', prompt: "Architectural visualization, modern design, interior lighting, wide angle, hyper-realistic, unreal engine 5", strength: 0.5, isSystem: true },
+  { id: 'style-scifi', name: 'Sci-Fi Concept', prompt: "Futuristic sci-fi concept art, neon lights, cyberpunk aesthetic, volumetric fog, digital art, trending on artstation", strength: 0.65, isSystem: true },
+  { id: 'style-fantasy', name: 'Fantasy', prompt: "Fantasy environment, magical atmosphere, ethereal lighting, painterly style, matte painting, masterpiece", strength: 0.6, isSystem: true }
 ];
 
 const App: React.FC = () => {
@@ -28,6 +35,9 @@ const App: React.FC = () => {
   // Camera State
   const [cameraPresets, setCameraPresets] = useState<CameraPreset[]>(DEFAULT_CAMERA_PRESETS);
   const [activeCameraPreset, setActiveCameraPreset] = useState<CameraPreset | null>(null);
+
+  // Style Preset State
+  const [stylePresets, setStylePresets] = useState<StylePreset[]>(DEFAULT_STYLE_PRESETS);
   
   // History State
   const [history, setHistory] = useState<{ past: {objs: SceneObject[], grps: SceneGroup[]}[], future: {objs: SceneObject[], grps: SceneGroup[]}[] }>({
@@ -100,6 +110,8 @@ const App: React.FC = () => {
     showStatus("REDO ACTION");
   }, [objects, groups, history]);
 
+  const generateId = () => Math.random().toString(36).substr(2, 9) + Date.now().toString(36).slice(-4);
+
   const handleAddLocal = useCallback((file: File) => {
     recordHistory(objects, groups);
     const url = URL.createObjectURL(file);
@@ -107,7 +119,7 @@ const App: React.FC = () => {
     const format = (ext === 'obj' ? 'obj' : (ext === 'gltf' ? 'gltf' : 'glb'));
 
     const newObj: SceneObject = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateId(),
       name: file.name.split('.')[0],
       url: url,
       position: [0, 0, 0],
@@ -130,7 +142,7 @@ const App: React.FC = () => {
     }
 
     const newObj: SceneObject = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateId(),
       name: asset.name,
       url: sanitizeModelUrl(asset.downloadUrl),
       position: [0, 0, 0],
@@ -152,7 +164,7 @@ const App: React.FC = () => {
   const handleAddPrimitive = useCallback((type: PrimitiveType) => {
     recordHistory(objects, groups);
     const newObj: SceneObject = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateId(),
       name: type.charAt(0).toUpperCase() + type.slice(1),
       url: '',
       position: [0, 0.5, 0],
@@ -167,12 +179,50 @@ const App: React.FC = () => {
     showStatus(`ADDED ${type.toUpperCase()}`);
   }, [objects, groups, recordHistory]);
 
+  const handleAddTerrain = useCallback(() => {
+    recordHistory(objects, groups);
+    const newObj: SceneObject = {
+      id: generateId(),
+      name: "Procedural Terrain",
+      url: '',
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+      type: 'terrain',
+      color: '#8ba88e',
+      terrainData: {
+        method: 'procedural',
+        width: 10,
+        depth: 10,
+        heightScale: 3,
+        segments: 64,
+        noiseScale: 1,
+        octaves: 3,
+        persistence: 0.5,
+        lacunarity: 2,
+        seed: Math.random(),
+        edgeFalloff: 'none',
+        falloffDistance: 0.2,
+        invert: false,
+        smoothness: 0,
+        wireframe: false,
+        showGradient: false
+      }
+    };
+    setObjects((prev) => [...prev, newObj]);
+    setSelectedId(newObj.id);
+    showStatus("ADDED TERRAIN");
+  }, [objects, groups, recordHistory]);
+
   const handleAddGroup = useCallback(() => {
     recordHistory(objects, groups);
     const newGroup: SceneGroup = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateId(),
       name: "New Group",
-      isOpen: true
+      isOpen: true,
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
     };
     setGroups(prev => [...prev, newGroup]);
     setSelectedId(newGroup.id);
@@ -193,8 +243,10 @@ const App: React.FC = () => {
     recordHistory(objects, groups);
     const newObj: SceneObject = {
       ...clipboard,
-      id: Math.random().toString(36).substr(2, 9),
-      position: [clipboard.position[0] + 1, clipboard.position[1], clipboard.position[2] + 1]
+      id: generateId(),
+      position: [clipboard.position[0] + 1, clipboard.position[1], clipboard.position[2] + 1],
+      rotation: [...clipboard.rotation] as [number, number, number],
+      scale: [...clipboard.scale] as [number, number, number]
     };
     setObjects((prev) => [...prev, newObj]);
     setSelectedId(newObj.id);
@@ -207,19 +259,26 @@ const App: React.FC = () => {
     // Check if it is a group
     const groupToDup = groups.find(g => g.id === id);
     if (groupToDup) {
-      const newGroupId = Math.random().toString(36).substr(2, 9);
+      const newGroupId = generateId();
       const newGroup: SceneGroup = {
         ...groupToDup,
         id: newGroupId,
-        name: `${groupToDup.name} (Copy)`
+        name: `${groupToDup.name} (Copy)`,
+        position: [groupToDup.position[0] + 2, groupToDup.position[1], groupToDup.position[2] + 2],
+        rotation: [...groupToDup.rotation] as [number, number, number],
+        scale: [...groupToDup.scale] as [number, number, number]
       };
       
       const groupObjects = objects.filter(o => o.groupId === id);
-      const newGroupObjects = groupObjects.map(obj => ({
+      // Duplicate objects inside the group
+      // IMPORTANT: Generate IDs using a counter index to prevent collision in tight loops
+      const newGroupObjects = groupObjects.map((obj, i) => ({
         ...obj,
-        id: Math.random().toString(36).substr(2, 9),
+        id: generateId() + i, // Append index to guarantee uniqueness during batch creation
         groupId: newGroupId,
-        position: [obj.position[0] + 2, obj.position[1], obj.position[2] + 2] as [number, number, number] // Offset group contents
+        position: [...obj.position] as [number, number, number], // Deep copy transform arrays
+        rotation: [...obj.rotation] as [number, number, number],
+        scale: [...obj.scale] as [number, number, number]
       }));
 
       setGroups(prev => [...prev, newGroup]);
@@ -234,15 +293,45 @@ const App: React.FC = () => {
     if (objToDup) {
       const newObj: SceneObject = {
         ...objToDup,
-        id: Math.random().toString(36).substr(2, 9),
+        id: generateId(),
         name: `${objToDup.name} (Copy)`,
-        position: [objToDup.position[0] + 1, objToDup.position[1], objToDup.position[2] + 1]
+        position: [objToDup.position[0] + 1, objToDup.position[1], objToDup.position[2] + 1],
+        rotation: [...objToDup.rotation] as [number, number, number],
+        scale: [...objToDup.scale] as [number, number, number]
       };
       setObjects(prev => [...prev, newObj]);
       setSelectedId(newObj.id);
       showStatus("DUPLICATED OBJECT");
     }
   }, [objects, groups, recordHistory]);
+
+  // Style Preset Handlers
+  const handleSaveStylePreset = useCallback((name: string) => {
+    const newPreset: StylePreset = {
+      id: generateId(),
+      name,
+      prompt,
+      strength,
+      lightingReference,
+      isSystem: false
+    };
+    setStylePresets(prev => [...prev, newPreset]);
+    showStatus("STYLE SAVED");
+  }, [prompt, strength, lightingReference]);
+
+  const handleApplyStylePreset = useCallback((preset: StylePreset) => {
+    setPrompt(preset.prompt);
+    setStrength(preset.strength);
+    if (preset.lightingReference !== undefined) {
+      setLightingReference(preset.lightingReference);
+    }
+    showStatus(`APPLIED: ${preset.name}`);
+  }, []);
+
+  const handleDeleteStylePreset = useCallback((id: string) => {
+    setStylePresets(prev => prev.filter(p => p.id !== id));
+    showStatus("STYLE DELETED");
+  }, []);
 
   // Project Management
   const resetProject = useCallback(() => {
@@ -258,6 +347,7 @@ const App: React.FC = () => {
     setResultImage(null);
     setSourceImage(null);
     setProjectName('Untitled Project');
+    setStylePresets(DEFAULT_STYLE_PRESETS); // Reset styles to default
     showStatus("NEW PROJECT STARTED");
     setIsNewProjectDialogOpen(false);
   }, []);
@@ -320,6 +410,7 @@ const App: React.FC = () => {
         groups,
         bgSettings: bgSettingsToSave,
         cameraPresets,
+        stylePresets, // Save custom presets
         aiSettings: { prompt, strength, lightingReference }
       };
 
@@ -358,6 +449,7 @@ const App: React.FC = () => {
         setGroups(json.groups || []);
         if (json.bgSettings) setBgSettings(json.bgSettings);
         if (json.cameraPresets) setCameraPresets(json.cameraPresets);
+        if (json.stylePresets) setStylePresets(json.stylePresets); // Load custom presets
         if (json.aiSettings) {
           setPrompt(json.aiSettings.prompt || '');
           setStrength(json.aiSettings.strength ?? 0.5);
@@ -576,6 +668,7 @@ const App: React.FC = () => {
           onAddLocal={handleAddLocal} 
           onAddCloud={handleAddCloud}
           onAddPrimitive={handleAddPrimitive}
+          onAddTerrain={handleAddTerrain}
           onSetBackground={handleSetBackground}
           bgSettings={bgSettings}
           setBgSettings={setBgSettings}
@@ -605,6 +698,7 @@ const App: React.FC = () => {
           onRemove={handleRemove} 
           transformMode={transformMode} 
           onUpdate={handleUpdate} 
+          onUpdateGroup={handleUpdateGroup}
           onUpdateMany={handleUpdateMany}
           canvasRef={canvasRef} 
           snapEnabled={snapEnabled} 
@@ -627,6 +721,10 @@ const App: React.FC = () => {
           onOpenPreview={() => setIsPreviewOpen(true)}
           lightingReference={lightingReference}
           setLightingReference={setLightingReference}
+          stylePresets={stylePresets}
+          onSaveStylePreset={handleSaveStylePreset}
+          onApplyStylePreset={handleApplyStylePreset}
+          onDeleteStylePreset={handleDeleteStylePreset}
         />
       </main>
 

@@ -1,12 +1,45 @@
 
 export type PrimitiveType = 'box' | 'sphere' | 'cylinder' | 'plane' | 'cone' | 'torus' | 'pyramid' | 'wedge' | 'oblique-wedge' | 'tube' | 'capsule' | 'hemisphere' | 'octahedron' | 'dodecahedron' | 'helix' | 'polyhedron' | 'pentagrammic-prism' | 'octagonal-pyramid' | 'tetrahedron' | 'conical-frustum';
 
+export type FalloffType = 'none' | 'linear' | 'cosine';
+
 export interface SceneGroup {
   id: string;
   name: string;
   isOpen: boolean;
   locked?: boolean;
   visible?: boolean;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
+}
+
+export interface TerrainData {
+  method: 'procedural' | 'heightmap';
+  heightmapUrl?: string;
+  
+  // Dimensions
+  width: number;
+  depth: number;
+  heightScale: number; // Amplitude
+  segments: number; // Subdivision
+
+  // Noise Parameters
+  noiseScale: number;
+  octaves: number;
+  persistence: number;
+  lacunarity: number;
+  seed: number;
+  
+  // Edge & Refinement
+  edgeFalloff: FalloffType;
+  falloffDistance: number; // 0 to 0.5
+  invert: boolean;
+  smoothness: number; // 0 to 1
+
+  // Visualization
+  wireframe?: boolean;
+  showGradient?: boolean;
 }
 
 export interface SceneObject {
@@ -17,9 +50,10 @@ export interface SceneObject {
   rotation: [number, number, number];
   scale: [number, number, number];
   color?: string;
-  type: 'local' | 'cloud' | 'primitive';
+  type: 'local' | 'cloud' | 'primitive' | 'terrain';
   format?: 'glb' | 'gltf' | 'obj'; // Added to support multiple formats
   primitiveType?: PrimitiveType;
+  terrainData?: TerrainData; // Specific data for terrain objects
   groupId?: string; // Reference to a SceneGroup
   referenceImageUrl?: string; // AI Reference Image
   locked?: boolean;
@@ -54,6 +88,15 @@ export interface CameraPreset {
   name: string;
   position: [number, number, number];
   target: [number, number, number];
+  isSystem?: boolean;
+}
+
+export interface StylePreset {
+  id: string;
+  name: string;
+  prompt: string;
+  strength: number;
+  lightingReference?: string | null;
   isSystem?: boolean;
 }
 
