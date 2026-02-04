@@ -1,11 +1,14 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { SceneObject, SceneGroup, CloudAsset, TransformMode, BackgroundSettings, PrimitiveType, CameraPreset, StylePreset } from './types';
+import { SceneObject, SceneGroup, CloudAsset, TransformMode, BackgroundSettings, PrimitiveType, CameraPreset, StylePreset, BatchConfig, BatchResultItem } from './types';
 import AssetPanel from './components/AssetPanel';
 import AIPanel from './components/AIPanel';
 import Viewport from './components/Viewport';
 import PreviewOverlay from './components/PreviewOverlay';
-import { processSceneToImage, sanitizeModelUrl } from './services/geminiService';
-import { Layers, Move, RotateCw, Maximize, Magnet, ClipboardCheck, Undo2, Redo2, Download, Upload, FileJson, FilePlus, AlertTriangle, X } from 'lucide-react';
+import BatchDialog from './components/BatchDialog';
+import BatchResultViewer from './components/BatchResultViewer';
+import { processSceneToImage, sanitizeModelUrl, generatePromptVariations } from './services/geminiService';
+import { Layers, Move, RotateCw, Maximize, Magnet, ClipboardCheck, Undo2, Redo2, Download, Upload, FileJson, FilePlus, AlertTriangle, X, Loader2 } from 'lucide-react';
 
 const DEFAULT_CAMERA_PRESETS: CameraPreset[] = [
   { id: 'cam-iso', name: 'Isometric (45°)', position: [10, 10, 10], target: [0, 0, 0], isSystem: true },
@@ -65,6 +68,13 @@ const App: React.FC = () => {
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Batch State
+  const [isBatchDialogOpen, setIsBatchDialogOpen] = useState(false);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+  const [batchResults, setBatchResults] = useState<BatchResultItem[]>([]);
+  const [isBatchResultOpen, setIsBatchResultOpen] = useState(false);
   
   // Modal State
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
@@ -616,6 +626,93 @@ const App: React.FC = () => {
     showStatus("OUTPUT SET AS BACKDROP");
   };
 
+  // --- Batch Processing Logic ---
+  const handleBatchGenerate = async (config: BatchConfig) => {
+    if (!canvasRef.current || !prompt) {
+      alert("Please ensure a prompt is entered.");
+      return;
+    }
+
+    setIsBatchDialogOpen(false);
+    setIsBatchProcessing(true);
+    setIsCapturing(true);
+
+    try {
+      // 1. Capture Source Image
+      const currentSelected = selectedId;
+      setSelectedId(null);
+      await new Promise(r => setTimeout(r, 150));
+      const base64 = canvasRef.current.toDataURL('image/png');
+      setSourceImage(base64);
+      setIsCapturing(false);
+      setSelectedId(currentSelected);
+
+      setBatchResults([]);
+      
+      const jobs: Array<{ prompt: string, strength: number, ref?: string, meta: string }> = [];
+
+      // 2. Prepare Jobs
+      if (config.mode === 'iteration') {
+        for(let i=0; i<config.count; i++) {
+          jobs.push({ prompt: prompt, strength: strength, ref: lightingReference || undefined, meta: `Iteration ${i+1}` });
+        }
+      } else if (config.mode === 'strength') {
+        const { start, end, steps } = config.strengthRange;
+        const stepSize = steps > 1 ? (end - start) / (steps - 1) : 0;
+        for(let i=0; i<steps; i++) {
+           const s = start + (stepSize * i);
+           jobs.push({ prompt: prompt, strength: s, ref: lightingReference || undefined, meta: `Strength: ${(s*100).toFixed(0)}%` });
+        }
+      } else if (config.mode === 'prompt') {
+        const prompts = await generatePromptVariations(prompt, config.count);
+        prompts.forEach((p, i) => {
+           jobs.push({ prompt: p, strength: strength, ref: lightingReference || undefined, meta: p });
+        });
+      } else if (config.mode === 'preset') {
+        config.selectedPresetIds.forEach(id => {
+           const p = stylePresets.find(sp => sp.id === id);
+           if(p) {
+             jobs.push({ 
+               prompt: p.prompt, 
+               strength: p.strength, 
+               ref: p.lightingReference || undefined, 
+               meta: `Preset: ${p.name}` 
+             });
+           }
+        });
+      }
+
+      setBatchProgress({ current: 0, total: jobs.length });
+
+      // 3. Execute Jobs Sequentially
+      for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
+        try {
+          const result = await processSceneToImage(base64, job.prompt, job.strength, objects, groups, job.ref || null);
+          if (result) {
+            setBatchResults(prev => [...prev, {
+              id: Math.random().toString(36).substr(2, 9),
+              imageUrl: result,
+              metadata: job.meta,
+              timestamp: Date.now()
+            }]);
+          }
+        } catch (e) {
+          console.error("Batch job failed", e);
+        }
+        setBatchProgress(prev => ({ ...prev, current: i + 1 }));
+      }
+
+      setIsBatchResultOpen(true);
+
+    } catch (err) {
+      console.error("Batch processing failed", err);
+      showStatus("BATCH FAILED");
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen w-full bg-[#050505] overflow-hidden select-none">
       <header className="h-14 border-b border-[#222] bg-[#111] flex items-center justify-between px-6 z-20">
@@ -663,7 +760,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex overflow-hidden relative">
         <AssetPanel 
           onAddLocal={handleAddLocal} 
           onAddCloud={handleAddCloud}
@@ -721,11 +818,31 @@ const App: React.FC = () => {
           onOpenPreview={() => setIsPreviewOpen(true)}
           lightingReference={lightingReference}
           setLightingReference={setLightingReference}
+          onOpenBatch={() => setIsBatchDialogOpen(true)}
           stylePresets={stylePresets}
           onSaveStylePreset={handleSaveStylePreset}
           onApplyStylePreset={handleApplyStylePreset}
           onDeleteStylePreset={handleDeleteStylePreset}
         />
+
+        {/* Batch Processing Overlay */}
+        {isBatchProcessing && (
+           <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none">
+              <div className="bg-[#111] border border-[#333] p-8 rounded-2xl flex flex-col items-center gap-4 shadow-2xl">
+                 <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                 <div className="text-center">
+                    <h3 className="text-white font-bold uppercase tracking-wider mb-1">Batch Processing</h3>
+                    <p className="text-xs text-gray-500 font-mono">Generating Image {batchProgress.current} of {batchProgress.total}</p>
+                 </div>
+                 <div className="w-48 h-1.5 bg-[#222] rounded-full overflow-hidden mt-2">
+                    <div 
+                       className="h-full bg-purple-600 transition-all duration-300 ease-out" 
+                       style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                    />
+                 </div>
+              </div>
+           </div>
+        )}
       </main>
 
       <footer className="h-8 border-t border-[#222] bg-[#0a0a0a] flex items-center justify-between px-4 z-20">
@@ -782,6 +899,24 @@ const App: React.FC = () => {
 
       {isPreviewOpen && resultImage && (
         <PreviewOverlay sourceImage={sourceImage} resultImage={resultImage} prompt={prompt} strength={strength} onClose={() => setIsPreviewOpen(false)} onSetAsBackdrop={() => handleSetAsBackdrop(resultImage)} />
+      )}
+
+      {isBatchDialogOpen && (
+         <BatchDialog 
+            onClose={() => setIsBatchDialogOpen(false)} 
+            onStart={handleBatchGenerate}
+            presets={stylePresets}
+         />
+      )}
+
+      {isBatchResultOpen && (
+         <BatchResultViewer 
+            results={batchResults}
+            sourceImage={sourceImage}
+            onClose={() => setIsBatchResultOpen(false)}
+            onSetBackdrop={(url) => handleSetAsBackdrop(url)}
+            onDiscard={(id) => setBatchResults(prev => prev.filter(p => p.id !== id))}
+         />
       )}
     </div>
   );

@@ -257,3 +257,39 @@ export const enhancePrompt = async (currentPrompt: string): Promise<string> => {
     return currentPrompt;
   }
 };
+
+/**
+ * Generates variations of a prompt for batch processing.
+ */
+export const generatePromptVariations = async (basePrompt: string, count: number): Promise<string[]> => {
+  if (!basePrompt.trim() || count < 1) return [basePrompt];
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Generate ${count} distinct, creative variations of the following image prompt. 
+      Keep the core subject identical, but vary the artistic style, lighting, and mood descriptors.
+      
+      Original Prompt: "${basePrompt}"`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        }
+      }
+    });
+    
+    const text = response.text;
+    if (text) {
+      return JSON.parse(text);
+    }
+    return Array(count).fill(basePrompt);
+  } catch (error) {
+    console.error("Prompt Variation Error:", error);
+    // Fallback: Return copies of original
+    return Array(count).fill(basePrompt);
+  }
+};

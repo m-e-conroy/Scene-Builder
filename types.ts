@@ -107,3 +107,21 @@ export const TRANSFORM_MODES: { [key: string]: TransformMode } = {
   ROTATE: 'rotate',
   SCALE: 'scale'
 };
+
+// --- Batch Processing Types ---
+
+export type BatchMode = 'iteration' | 'strength' | 'prompt' | 'preset';
+
+export interface BatchConfig {
+  mode: BatchMode;
+  count: number; // For iteration/prompt
+  strengthRange: { start: number; end: number; steps: number };
+  selectedPresetIds: string[];
+}
+
+export interface BatchResultItem {
+  id: string;
+  imageUrl: string;
+  metadata: string;
+  timestamp: number;
+}

@@ -1,8 +1,9 @@
+
 import React, { useState } from 'react';
 import { 
   Sparkles, Sliders, Image as ImageIcon, Loader2, Info, Maximize2, 
   Sun, Trash2, Upload, Wand2, Plus, Check, Lightbulb, Camera, 
-  Zap, Palette, Tag, BrainCircuit, X
+  Zap, Palette, Tag, BrainCircuit, X, Layers
 } from 'lucide-react';
 import { enhancePrompt } from '../services/geminiService';
 
@@ -17,6 +18,11 @@ interface AIPanelProps {
   onOpenPreview: () => void;
   lightingReference: string | null;
   setLightingReference: (url: string | null) => void;
+  onOpenBatch: () => void;
+  stylePresets: any[]; // Added prop type
+  onSaveStylePreset: (name: string) => void;
+  onApplyStylePreset: (preset: any) => void;
+  onDeleteStylePreset: (id: string) => void;
 }
 
 const TEMPLATES = [
@@ -36,7 +42,7 @@ const KEYWORD_CATEGORIES = {
 
 const AIPanel: React.FC<AIPanelProps> = ({ 
   prompt, setPrompt, strength, setStrength, onGenerate, isGenerating, resultImage, onOpenPreview,
-  lightingReference, setLightingReference
+  lightingReference, setLightingReference, onOpenBatch
 }) => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [activeKeywordTab, setActiveKeywordTab] = useState<keyof typeof KEYWORD_CATEGORIES>('Lighting');
@@ -250,24 +256,33 @@ const AIPanel: React.FC<AIPanelProps> = ({
             />
           </div>
 
-          <button 
-            onClick={onGenerate}
-            disabled={isGenerating || !prompt}
-            className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-xl
-              ${isGenerating || !prompt 
-                ? 'bg-[#222] text-gray-500 cursor-not-allowed' 
-                : 'bg-blue-600 text-white hover:bg-blue-500 hover:scale-[1.02] active:scale-95 shadow-blue-500/10'}`}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 size={16} className="animate-spin" /> TRANSFORMING...
-              </>
-            ) : (
-              <>
-                <ImageIcon size={16} /> GENERATE RENDER
-              </>
-            )}
-          </button>
+          <div className="grid grid-cols-[1fr,auto] gap-2">
+            <button 
+                onClick={onGenerate}
+                disabled={isGenerating || !prompt}
+                className={`flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-xl
+                ${isGenerating || !prompt 
+                    ? 'bg-[#222] text-gray-500 cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-500 hover:scale-[1.02] active:scale-95 shadow-blue-500/10'}`}
+            >
+                {isGenerating ? (
+                <>
+                    <Loader2 size={16} className="animate-spin" /> TRANSFORMING...
+                </>
+                ) : (
+                <>
+                    <ImageIcon size={16} /> GENERATE
+                </>
+                )}
+            </button>
+            <button
+                onClick={onOpenBatch}
+                className="px-3 rounded-lg bg-[#222] hover:bg-purple-900/50 hover:text-purple-300 hover:border-purple-500/50 border border-[#333] text-gray-400 transition-all flex items-center justify-center"
+                title="Batch Processing"
+            >
+                <Layers size={18} />
+            </button>
+          </div>
         </div>
       </div>
 
