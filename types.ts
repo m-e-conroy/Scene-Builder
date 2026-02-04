@@ -125,3 +125,36 @@ export interface BatchResultItem {
   metadata: string;
   timestamp: number;
 }
+
+// --- Array Tool Types ---
+
+export type ArrayType = 'linear' | 'radial' | 'grid';
+
+export interface ArrayConfig {
+  type: ArrayType;
+  
+  // Linear Params
+  linearCount: number;
+  linearOffset: [number, number, number];
+  linearRotation: [number, number, number];
+  linearScale: [number, number, number];
+
+  // Radial Params
+  radialCount: number;
+  radialRadius: number;
+  radialArc: number; // Degrees
+  radialStartAngle: number; // Degrees
+  radialHeightOffset: number; // Spiral effect
+  radialFaceCenter: boolean;
+
+  // Grid Params
+  gridRows: number; // X
+  gridCols: number; // Z
+  gridLayers: number; // Y
+  gridSpacing: [number, number, number];
+
+  // Randomization
+  randomPos: [number, number, number];
+  randomRot: [number, number, number];
+  randomScale: [number, number, number];
+}
