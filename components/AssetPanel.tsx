@@ -9,7 +9,7 @@ import {
   TriangleRight, Slice, Lock, Unlock, Eye, EyeOff,
   Diamond, Hexagon, Sunset, Battery, CircleDot, Dna, 
   Shapes, Star, Gem, Filter, Tent, Copy, ExternalLink, Key, Download, Mountain, 
-  RefreshCw, Grid, LayoutTemplate
+  RefreshCw, Grid, LayoutTemplate, Landmark, Spline, Ruler, Waves, ScanLine, PaintBucket
 } from 'lucide-react';
 import * as THREE from 'three';
 import { SceneObject, SceneGroup, CloudAsset, BackgroundSettings, PrimitiveType, CameraPreset, TerrainData, FalloffType } from '../types';
@@ -39,7 +39,7 @@ interface AssetPanelProps {
   onSavePreset: (name: string) => void;
   onLoadPreset: (preset: CameraPreset) => void;
   onDeletePreset: (id: string) => void;
-  onOpenArrayTool: () => void; // New Prop
+  onOpenArrayTool: () => void; 
 }
 
 const PRIMITIVES: { type: PrimitiveType, icon: React.ReactNode, name: string }[] = [
@@ -63,6 +63,8 @@ const PRIMITIVES: { type: PrimitiveType, icon: React.ReactNode, name: string }[]
   { type: 'octagonal-pyramid', icon: <Tent size={16} />, name: 'Oct-Pyramid' },
   { type: 'tetrahedron', icon: <Gem size={16} />, name: 'Tetrahedron' },
   { type: 'conical-frustum', icon: <Filter size={16} />, name: 'Frustum' },
+  { type: 'arch', icon: <Landmark size={16} />, name: 'Arch' },
+  { type: 'half-pipe', icon: <Spline size={16} />, name: 'Half Pipe' },
 ];
 
 const TERRAIN_PRESETS: Record<string, Partial<TerrainData>> = {
@@ -184,7 +186,6 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
     const reader = new FileReader();
     reader.onload = (e) => {
       const base64 = e.target?.result as string;
-      // We need to cast through unknown because TypeScript doesn't know about nested updates easily
       const obj = objects.find(o => o.id === id);
       if (obj && obj.terrainData) {
          onUpdate(id, { 
@@ -200,6 +201,15 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
      if (obj && obj.terrainData && TERRAIN_PRESETS[presetName]) {
          onUpdate(id, {
              terrainData: { ...obj.terrainData, ...TERRAIN_PRESETS[presetName], method: 'procedural' }
+         });
+     }
+  };
+
+  const updateTerrain = (id: string, updates: Partial<TerrainData>) => {
+     const obj = objects.find(o => o.id === id);
+     if (obj && obj.terrainData) {
+         onUpdate(id, {
+             terrainData: { ...obj.terrainData, ...updates }
          });
      }
   };
@@ -396,6 +406,20 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
     );
   };
 
+  const InputRange = ({ label, value, min, max, step, onChange, icon }: any) => (
+    <div className="space-y-1">
+      <div className="flex justify-between text-[8px] text-gray-500 uppercase font-black">
+        <span className="flex items-center gap-1">{icon} {label}</span>
+        <span className="text-blue-400">{typeof value === 'number' ? value.toFixed(step < 1 ? 2 : 0) : value}</span>
+      </div>
+      <input 
+         type="range" min={min} max={max} step={step} value={value} 
+         onChange={(e) => onChange(parseFloat(e.target.value))} 
+         className="w-full h-1 bg-[#222] rounded-lg appearance-none accent-blue-600"
+      />
+    </div>
+  );
+
   return (
     <div className="w-80 h-full bg-[#111] border-r border-[#222] flex flex-col pointer-events-auto">
       <div className="p-4 border-b border-[#222]">
@@ -436,9 +460,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
           </div>
         )}
 
-        {/* ... (Existing tabs omitted for brevity, keeping only the updated Scene inspector section) ... */}
-        
-        {/* RE-INSERTING OTHER TABS FOR CONTEXT - NO CHANGES UNTIL SCENE TAB */}
+        {/* ... Other tabs ... */}
         {activeTab === 'local' && (
           <div className="space-y-4">
              <div className="border-2 border-dashed border-[#333] rounded-lg p-6 flex flex-col items-center justify-center text-center hover:border-blue-500 hover:bg-blue-900/5 transition-all group">
@@ -460,7 +482,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
              </div>
           </div>
         )}
-
+        
         {activeTab === 'env' && (
           <div className="space-y-6">
              <div>
@@ -482,7 +504,6 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                    )}
                 </div>
              </div>
-
              {bgSettings.url && (
                 <div className="space-y-4">
                    <div>
@@ -569,19 +590,47 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
              <div>
               <label className="block text-[10px] text-gray-500 uppercase font-black tracking-widest mb-3">Save Current Perspective</label>
               <div className="flex gap-2">
-                <input type="text" placeholder="View Name..." className="flex-1 bg-[#0a0a0a] border border-[#222] rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" value={newPresetName} onChange={(e) => setNewPresetName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && newPresetName.trim()) { onSavePreset(newPresetName); setNewPresetName(''); } }} />
-                <button onClick={() => { if (newPresetName.trim()) { onSavePreset(newPresetName); setNewPresetName(''); } }} className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"><Save size={16} /></button>
+                <input 
+                  type="text" 
+                  placeholder="View Name..." 
+                  className="flex-1 bg-[#0a0a0a] border border-[#222] rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" 
+                  value={newPresetName} 
+                  onChange={(e) => setNewPresetName(e.target.value)} 
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newPresetName.trim()) { onSavePreset(newPresetName); setNewPresetName(''); } }} 
+                />
+                <button 
+                  onClick={() => { if (newPresetName.trim()) { onSavePreset(newPresetName); setNewPresetName(''); } }} 
+                  className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
+                >
+                  <Save size={16} />
+                </button>
               </div>
             </div>
             <div className="space-y-4">
               <label className="block text-[10px] text-gray-500 uppercase font-black tracking-widest">Navigation Presets</label>
               <div className="grid grid-cols-1 gap-2">
                 {cameraPresets.map((preset) => (
-                  <div key={preset.id} className="group relative flex items-center justify-between p-3 bg-[#0a0a0a] border border-[#222] rounded-lg hover:border-blue-500/50 transition-all cursor-pointer" onClick={() => onLoadPreset(preset)}>
+                  <div 
+                    key={preset.id} 
+                    className="group relative flex items-center justify-between p-3 bg-[#0a0a0a] border border-[#222] rounded-lg hover:border-blue-500/50 transition-all cursor-pointer" 
+                    onClick={() => onLoadPreset(preset)}
+                  >
                     <div className="flex items-center gap-3">
-                      <div className={`p-1.5 rounded-md ${preset.isSystem ? 'bg-blue-600/20 text-blue-400' : 'bg-green-600/20 text-green-400'}`}> {preset.isSystem ? <Globe size={14} /> : <Camera size={14} />} </div>
-                      <div> <p className="text-[10px] font-bold text-gray-300 uppercase tracking-tight">{preset.name}</p> </div>
+                      <div className={`p-1.5 rounded-md ${preset.isSystem ? 'bg-blue-600/20 text-blue-400' : 'bg-green-600/20 text-green-400'}`}> 
+                        {preset.isSystem ? <Globe size={14} /> : <Camera size={14} />} 
+                      </div>
+                      <div> 
+                        <p className="text-[10px] font-bold text-gray-300 uppercase tracking-tight">{preset.name}</p> 
+                      </div>
                     </div>
+                    {!preset.isSystem && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onDeletePreset(preset.id); }}
+                        className="p-1.5 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -634,7 +683,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                 
                 {selectedObject && (
                   <>
-                  {/* ... Terrain Inspector ... */}
+                  {/* TERRAIN INSPECTOR */}
                   {selectedObject.type === 'terrain' && selectedObject.terrainData && (
                      <div className="space-y-4">
                         <div className="flex items-center justify-between">
@@ -649,7 +698,104 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                                 {Object.keys(TERRAIN_PRESETS).map(k => <option key={k} value={k}>{k.replace('-', ' ').toUpperCase()}</option>)}
                             </select>
                         </div>
-                        {/* ... existing terrain UI ... */}
+                        
+                        <div className="bg-[#0a0a0a] border border-[#222] rounded-lg overflow-hidden">
+                           <div className="flex border-b border-[#222]">
+                              {(['gen', 'shape', 'edge', 'vis'] as const).map(tab => (
+                                 <button
+                                    key={tab}
+                                    onClick={() => setActiveTerrainTab(tab)}
+                                    className={`flex-1 py-2 text-[8px] font-bold uppercase transition-colors ${activeTerrainTab === tab ? 'bg-[#222] text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                                 >
+                                    {tab}
+                                 </button>
+                              ))}
+                           </div>
+                           
+                           <div className="p-3 space-y-4">
+                              {activeTerrainTab === 'gen' && (
+                                 <div className="space-y-3">
+                                    <div className="flex gap-2 p-1 bg-[#151515] rounded">
+                                       <button onClick={() => updateTerrain(selectedObject.id, { method: 'procedural' })} className={`flex-1 py-1 text-[9px] font-bold uppercase rounded ${selectedObject.terrainData.method === 'procedural' ? 'bg-[#333] text-white' : 'text-gray-500'}`}>Procedural</button>
+                                       <button onClick={() => updateTerrain(selectedObject.id, { method: 'heightmap' })} className={`flex-1 py-1 text-[9px] font-bold uppercase rounded ${selectedObject.terrainData.method === 'heightmap' ? 'bg-[#333] text-white' : 'text-gray-500'}`}>Heightmap</button>
+                                    </div>
+
+                                    {selectedObject.terrainData.method === 'heightmap' && (
+                                       <label className="block w-full p-2 border border-dashed border-[#333] rounded text-center cursor-pointer hover:bg-[#151515] hover:border-blue-500 text-[9px] text-gray-500 uppercase font-bold">
+                                          Upload Map Image
+                                          <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleHeightmapUpload(selectedObject.id, e.target.files[0])} />
+                                       </label>
+                                    )}
+
+                                    <InputRange label="Width" icon={<Ruler size={10}/>} value={selectedObject.terrainData.width} min={1} max={100} step={1} onChange={(v: number) => updateTerrain(selectedObject.id, { width: v })} />
+                                    <InputRange label="Depth" icon={<Ruler size={10}/>} value={selectedObject.terrainData.depth} min={1} max={100} step={1} onChange={(v: number) => updateTerrain(selectedObject.id, { depth: v })} />
+                                    <InputRange label="Height Scale" icon={<MoveVertical size={10}/>} value={selectedObject.terrainData.heightScale} min={0.1} max={20} step={0.1} onChange={(v: number) => updateTerrain(selectedObject.id, { heightScale: v })} />
+                                    <InputRange label="Resolution (Seg)" icon={<Grid size={10}/>} value={selectedObject.terrainData.segments} min={4} max={256} step={4} onChange={(v: number) => updateTerrain(selectedObject.id, { segments: v })} />
+                                 </div>
+                              )}
+
+                              {activeTerrainTab === 'shape' && (
+                                 <div className="space-y-3">
+                                    {selectedObject.terrainData.method === 'procedural' ? (
+                                       <>
+                                          <InputRange label="Noise Scale" icon={<Waves size={10}/>} value={selectedObject.terrainData.noiseScale} min={0.1} max={10} step={0.1} onChange={(v: number) => updateTerrain(selectedObject.id, { noiseScale: v })} />
+                                          <InputRange label="Detail (Octaves)" icon={<LayersIcon size={10}/>} value={selectedObject.terrainData.octaves} min={1} max={8} step={1} onChange={(v: number) => updateTerrain(selectedObject.id, { octaves: v })} />
+                                          <InputRange label="Roughness (Persist)" icon={<ActivityIcon size={10}/>} value={selectedObject.terrainData.persistence} min={0} max={1} step={0.05} onChange={(v: number) => updateTerrain(selectedObject.id, { persistence: v })} />
+                                          <InputRange label="Variation (Lacun)" icon={<Dna size={10}/>} value={selectedObject.terrainData.lacunarity} min={1} max={5} step={0.1} onChange={(v: number) => updateTerrain(selectedObject.id, { lacunarity: v })} />
+                                          
+                                          <div className="flex items-center justify-between pt-2">
+                                             <button onClick={() => updateTerrain(selectedObject.id, { seed: Math.random() })} className="px-3 py-1 bg-[#222] hover:bg-[#333] rounded text-[9px] text-gray-300 font-bold uppercase flex items-center gap-1"><RefreshCw size={10} /> Randomize Seed</button>
+                                             <label className="flex items-center gap-2 text-[9px] text-gray-400 font-bold uppercase cursor-pointer">
+                                                <input type="checkbox" checked={selectedObject.terrainData.invert} onChange={(e) => updateTerrain(selectedObject.id, { invert: e.target.checked })} /> Invert
+                                             </label>
+                                          </div>
+                                       </>
+                                    ) : (
+                                       <div className="text-center p-4 text-[10px] text-gray-500">Shape options only available for Procedural Method</div>
+                                    )}
+                                 </div>
+                              )}
+
+                              {activeTerrainTab === 'edge' && (
+                                 <div className="space-y-3">
+                                    <div className="space-y-1">
+                                       <label className="text-[8px] text-gray-500 font-bold uppercase">Edge Falloff Type</label>
+                                       <div className="flex gap-1">
+                                          {(['none', 'linear', 'cosine'] as FalloffType[]).map(t => (
+                                             <button key={t} onClick={() => updateTerrain(selectedObject.id, { edgeFalloff: t })} className={`flex-1 py-1 text-[8px] font-bold uppercase rounded border ${selectedObject.terrainData?.edgeFalloff === t ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-[#151515] border-transparent text-gray-500'}`}>
+                                                {t}
+                                             </button>
+                                          ))}
+                                       </div>
+                                    </div>
+                                    <InputRange label="Falloff Distance" icon={<ScanLine size={10}/>} value={selectedObject.terrainData.falloffDistance} min={0} max={0.5} step={0.05} onChange={(v: number) => updateTerrain(selectedObject.id, { falloffDistance: v })} />
+                                    <InputRange label="Smoothing" icon={<ActivityIcon size={10}/>} value={selectedObject.terrainData.smoothness} min={0} max={1} step={0.05} onChange={(v: number) => updateTerrain(selectedObject.id, { smoothness: v })} />
+                                 </div>
+                              )}
+
+                              {activeTerrainTab === 'vis' && (
+                                 <div className="space-y-3">
+                                    <label className="flex items-center justify-between p-2 bg-[#151515] rounded cursor-pointer group">
+                                       <span className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white">Wireframe Mode</span>
+                                       <input type="checkbox" checked={selectedObject.terrainData.wireframe} onChange={(e) => updateTerrain(selectedObject.id, { wireframe: e.target.checked })} className="accent-blue-600" />
+                                    </label>
+                                    <label className="flex items-center justify-between p-2 bg-[#151515] rounded cursor-pointer group">
+                                       <span className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white">Show Height Gradient</span>
+                                       <input type="checkbox" checked={selectedObject.terrainData.showGradient} onChange={(e) => updateTerrain(selectedObject.id, { showGradient: e.target.checked })} className="accent-blue-600" />
+                                    </label>
+                                    {!selectedObject.terrainData.showGradient && (
+                                       <div className="pt-2">
+                                          <label className="text-[8px] text-gray-500 font-bold uppercase mb-1 block">Solid Color</label>
+                                          <div className="flex gap-2">
+                                             <input type="color" value={selectedObject.color || '#ffffff'} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="w-8 h-8 rounded cursor-pointer bg-transparent border-none" />
+                                             <input type="text" value={selectedObject.color || '#ffffff'} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="flex-1 bg-[#151515] border border-[#333] rounded px-2 text-[10px] text-gray-300 font-mono outline-none focus:border-blue-500" />
+                                          </div>
+                                       </div>
+                                    )}
+                                 </div>
+                              )}
+                           </div>
+                        </div>
                      </div>
                   )}
 
@@ -687,6 +833,44 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                       />
                     </div>
                   </div>
+                  
+                  {/* AI Reference Image Section */}
+                  <div className="space-y-3 pt-4 border-t border-[#222]">
+                      <label className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-2">
+                          <ImageIcon size={12} /> AI Reference Image
+                      </label>
+                      
+                      <div className="relative w-full aspect-video bg-[#0a0a0a] border border-[#222] rounded-lg overflow-hidden group">
+                          {selectedObject.referenceImageUrl ? (
+                              <>
+                                  <img src={selectedObject.referenceImageUrl} className="w-full h-full object-cover opacity-60" />
+                                  <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button 
+                                          onClick={() => onUpdate(selectedObject.id, { referenceImageUrl: undefined })}
+                                          className="p-1.5 bg-red-600 rounded text-white text-[9px] font-bold uppercase hover:bg-red-500"
+                                      >
+                                          Remove
+                                      </button>
+                                  </div>
+                              </>
+                          ) : (
+                              <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-[#111] transition-colors">
+                                  <Upload size={16} className="text-gray-600 mb-2" />
+                                  <span className="text-[9px] text-gray-500 font-bold uppercase">Upload Context</span>
+                                  <input 
+                                      type="file" 
+                                      className="hidden" 
+                                      accept="image/*" 
+                                      onChange={(e) => e.target.files?.[0] && handleRefImageUpload(selectedObject.id, e.target.files[0])} 
+                                  />
+                              </label>
+                          )}
+                      </div>
+                      <p className="text-[9px] text-gray-600 leading-tight">
+                          Upload an image to guide the AI on how this specific object should look (texture, material, style).
+                      </p>
+                  </div>
+
                   {/* ... rest of selectedObject ... */}
                   </>
                 )}
@@ -711,5 +895,10 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
     </div>
   );
 };
+
+// Helper for generic icons
+const ActivityIcon = ({size}: {size:number}) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+);
 
 export default AssetPanel;

@@ -102,7 +102,7 @@ const cleanSceneGeometry = (scene: THREE.Object3D): boolean => {
 };
 
 // ... [Existing Custom Shapes: Wedge, ObliqueWedge, PentagrammicPrism, Pipe, Helix] ...
-const Wedge: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+const Wedge: React.FC<{ color: string, shadowProps: any, material?: THREE.Material }> = ({ color, shadowProps, material }) => {
   const shape = useMemo(() => {
     const s = new THREE.Shape();
     s.moveTo(0, 0);
@@ -112,10 +112,12 @@ const Wedge: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowPro
     return s;
   }, []);
   const extrudeSettings = useMemo(() => ({ depth: 1, bevelEnabled: false }), []);
-  return <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[-0.5, -0.5, -0.5]}><meshStandardMaterial color={color} /></Extrude>;
+  return <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[-0.5, -0.5, -0.5]} material={material}>
+    {!material && <meshStandardMaterial color={color} />}
+  </Extrude>;
 };
 
-const ObliqueWedge: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+const ObliqueWedge: React.FC<{ color: string, shadowProps: any, material?: THREE.Material }> = ({ color, shadowProps, material }) => {
   const shape = useMemo(() => {
     const s = new THREE.Shape();
     s.moveTo(0, 0);
@@ -125,10 +127,12 @@ const ObliqueWedge: React.FC<{ color: string, shadowProps: any }> = ({ color, sh
     return s;
   }, []);
   const extrudeSettings = useMemo(() => ({ depth: 1, bevelEnabled: false }), []);
-  return <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[-0.5, -0.5, -0.5]}><meshStandardMaterial color={color} /></Extrude>;
+  return <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[-0.5, -0.5, -0.5]} material={material}>
+    {!material && <meshStandardMaterial color={color} />}
+  </Extrude>;
 };
 
-const PentagrammicPrism: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+const PentagrammicPrism: React.FC<{ color: string, shadowProps: any, material?: THREE.Material }> = ({ color, shadowProps, material }) => {
   const shape = useMemo(() => {
     const s = new THREE.Shape();
     const points = 5;
@@ -146,10 +150,12 @@ const PentagrammicPrism: React.FC<{ color: string, shadowProps: any }> = ({ colo
     return s;
   }, []);
   const extrudeSettings = useMemo(() => ({ depth: 1, bevelEnabled: false }), []);
-  return <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[0, 0, -0.5]}><meshStandardMaterial color={color} /></Extrude>;
+  return <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[0, 0, -0.5]} material={material}>
+    {!material && <meshStandardMaterial color={color} />}
+  </Extrude>;
 };
 
-const Pipe: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+const Pipe: React.FC<{ color: string, shadowProps: any, material?: THREE.Material }> = ({ color, shadowProps, material }) => {
     const geometry = useMemo(() => {
         const shape = new THREE.Shape();
         shape.absarc(0, 0, 0.5, 0, Math.PI * 2, false);
@@ -158,10 +164,12 @@ const Pipe: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProp
         shape.holes.push(hole);
         return new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false, curveSegments: 32 });
     }, []);
-    return <mesh geometry={geometry} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.5, 0.5]} {...shadowProps}><meshStandardMaterial color={color} /></mesh>;
+    return <mesh geometry={geometry} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.5, 0.5]} {...shadowProps} material={material}>
+        {!material && <meshStandardMaterial color={color} />}
+    </mesh>;
 };
 
-const Helix: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowProps }) => {
+const Helix: React.FC<{ color: string, shadowProps: any, material?: THREE.Material }> = ({ color, shadowProps, material }) => {
     const path = useMemo(() => {
         const points = [];
         for (let i = 0; i <= 100; i++) {
@@ -174,7 +182,74 @@ const Helix: React.FC<{ color: string, shadowProps: any }> = ({ color, shadowPro
         }
         return new THREE.CatmullRomCurve3(points);
     }, []);
-    return <Tube args={[path, 64, 0.08, 12, false]} {...shadowProps}><meshStandardMaterial color={color} /></Tube>;
+    return <Tube args={[path, 64, 0.08, 12, false]} {...shadowProps} material={material}>
+        {!material && <meshStandardMaterial color={color} />}
+    </Tube>;
+};
+
+const Arch: React.FC<{ color: string, shadowProps: any, material?: THREE.Material }> = ({ color, shadowProps, material }) => {
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    // 1 unit wide, 1 unit high
+    const w = 1;
+    const h = 1;
+    const t = 0.25; // Thickness of leg
+
+    // Start bottom left outer
+    s.moveTo(-w/2, -h/2);
+    // Up to curve start (let's say curve is semi circle at top)
+    const legHeight = h - w/2; // 1 - 0.5 = 0.5
+    s.lineTo(-w/2, -h/2 + legHeight);
+    
+    // Outer Arc
+    // Center of arc is (0, -h/2 + legHeight) -> (0, 0)
+    s.absarc(0, 0, w/2, Math.PI, 0, true);
+    
+    // Down right outer
+    s.lineTo(w/2, -h/2);
+    // In right
+    s.lineTo(w/2 - t, -h/2);
+    // Up right inner
+    s.lineTo(w/2 - t, 0);
+    
+    // Inner Arc
+    s.absarc(0, 0, w/2 - t, 0, Math.PI, false);
+    
+    // Down left inner
+    s.lineTo(-w/2 + t, -h/2);
+    // Close
+    s.lineTo(-w/2, -h/2);
+    
+    return s;
+  }, []);
+  
+  const extrudeSettings = useMemo(() => ({ depth: 1, bevelEnabled: false }), []);
+  
+  return <Extrude args={[shape, extrudeSettings]} {...shadowProps} position={[0, 0, -0.5]} material={material}>
+    {!material && <meshStandardMaterial color={color} />}
+  </Extrude>;
+};
+
+const HalfPipe: React.FC<{ color: string, shadowProps: any, material?: THREE.Material }> = ({ color, shadowProps, material }) => {
+    const geometry = useMemo(() => {
+        const s = new THREE.Shape();
+        const rOuter = 0.5;
+        const rInner = 0.4;
+        
+        // C shape facing up
+        // Outer arc from PI to 2PI (bottom half)
+        s.absarc(0, 0, rOuter, Math.PI, 2 * Math.PI, true); 
+        s.lineTo(rInner, 0);
+        // Inner arc from 2PI to PI (clockwise)
+        s.absarc(0, 0, rInner, 2 * Math.PI, Math.PI, false); 
+        s.lineTo(-rOuter, 0);
+        
+        return new THREE.ExtrudeGeometry(s, { depth: 1, bevelEnabled: false, curveSegments: 32 });
+    }, []);
+    
+    return <mesh geometry={geometry} position={[0, 0.25, -0.5]} {...shadowProps} material={material}>
+        {!material && <meshStandardMaterial color={color} />}
+    </mesh>;
 };
 
 // ... [Existing Model Component] ...
@@ -279,44 +354,41 @@ const Model: React.FC<ModelProps> = ({
 
   const renderPrimitive = () => {
     const color = obj.color || '#3b82f6';
-    const material = overrideMaterial || <meshStandardMaterial color={color} />;
     const shadowProps = { castShadow: true, receiveShadow: true };
     const interactionProps = { raycast: isLocked ? () => null : undefined };
+    
+    const meshProps = {
+        ...shadowProps,
+        ...interactionProps,
+        material: overrideMaterial
+    };
 
-    if (overrideMaterial) {
-        // If overriding (preview mode), wrap in primitive group with material prop won't work easily for basic shapes
-        // We need to pass material as children
-        const mat = overrideMaterial; 
-        switch (obj.primitiveType) {
-            case 'box': return <Box args={[1, 1, 1]} {...shadowProps} {...interactionProps} material={mat} />;
-            case 'sphere': return <Sphere args={[0.5, 32, 32]} {...shadowProps} {...interactionProps} material={mat} />;
-            // ... (Simple shapes can take material prop)
-        }
-    }
+    const MatChild = !overrideMaterial ? <meshStandardMaterial color={color} /> : null;
 
-    // Default Material Render
     switch (obj.primitiveType) {
-      case 'box': return <Box args={[1, 1, 1]} {...shadowProps} {...interactionProps}>{material}</Box>;
-      case 'sphere': return <Sphere args={[0.5, 32, 32]} {...shadowProps} {...interactionProps}>{material}</Sphere>;
-      case 'cylinder': return <Cylinder args={[0.5, 0.5, 1, 32]} {...shadowProps} {...interactionProps}>{material}</Cylinder>;
-      case 'plane': return <Plane args={[1, 1]} {...shadowProps} {...interactionProps}>{material}</Plane>;
-      case 'cone': return <Cone args={[0.5, 1, 32]} {...shadowProps} {...interactionProps}>{material}</Cone>;
-      case 'torus': return <Torus args={[0.4, 0.1, 16, 100]} {...shadowProps} {...interactionProps}>{material}</Torus>;
-      case 'pyramid': return <Cone args={[0.7, 1, 4]} {...shadowProps} {...interactionProps}>{material}</Cone>;
-      case 'wedge': return <Wedge color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
-      case 'oblique-wedge': return <ObliqueWedge color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
-      case 'tube': return <Pipe color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
-      case 'capsule': return <Capsule args={[0.3, 1, 4, 16]} {...shadowProps} {...interactionProps}>{material}</Capsule>;
-      case 'hemisphere': return <Sphere args={[0.5, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2]} {...shadowProps} {...interactionProps}>{material}</Sphere>;
-      case 'octahedron': return <Octahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Octahedron>;
-      case 'dodecahedron': return <Dodecahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Dodecahedron>;
-      case 'helix': return <Helix color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
-      case 'polyhedron': return <Icosahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Icosahedron>;
-      case 'pentagrammic-prism': return <PentagrammicPrism color={color} shadowProps={{...shadowProps, ...interactionProps}} />;
-      case 'octagonal-pyramid': return <Cylinder args={[0, 0.5, 1, 8]} {...shadowProps} {...interactionProps}>{material}</Cylinder>;
-      case 'tetrahedron': return <Tetrahedron args={[0.6]} {...shadowProps} {...interactionProps}>{material}</Tetrahedron>;
-      case 'conical-frustum': return <Cylinder args={[0.25, 0.5, 1, 32]} {...shadowProps} {...interactionProps}>{material}</Cylinder>;
-      default: return <Box args={[1, 1, 1]} {...shadowProps} {...interactionProps}>{material}</Box>;
+      case 'box': return <Box args={[1, 1, 1]} {...meshProps}>{MatChild}</Box>;
+      case 'sphere': return <Sphere args={[0.5, 32, 32]} {...meshProps}>{MatChild}</Sphere>;
+      case 'cylinder': return <Cylinder args={[0.5, 0.5, 1, 32]} {...meshProps}>{MatChild}</Cylinder>;
+      case 'plane': return <Plane args={[1, 1]} {...meshProps}>{MatChild}</Plane>;
+      case 'cone': return <Cone args={[0.5, 1, 32]} {...meshProps}>{MatChild}</Cone>;
+      case 'torus': return <Torus args={[0.4, 0.1, 16, 100]} {...meshProps}>{MatChild}</Torus>;
+      case 'pyramid': return <Cone args={[0.7, 1, 4]} {...meshProps}>{MatChild}</Cone>;
+      case 'wedge': return <Wedge color={color} shadowProps={{...shadowProps, ...interactionProps}} material={overrideMaterial} />;
+      case 'oblique-wedge': return <ObliqueWedge color={color} shadowProps={{...shadowProps, ...interactionProps}} material={overrideMaterial} />;
+      case 'tube': return <Pipe color={color} shadowProps={{...shadowProps, ...interactionProps}} material={overrideMaterial} />;
+      case 'capsule': return <Capsule args={[0.3, 1, 4, 16]} {...meshProps}>{MatChild}</Capsule>;
+      case 'hemisphere': return <Sphere args={[0.5, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2]} {...meshProps}>{MatChild}</Sphere>;
+      case 'octahedron': return <Octahedron args={[0.6]} {...meshProps}>{MatChild}</Octahedron>;
+      case 'dodecahedron': return <Dodecahedron args={[0.6]} {...meshProps}>{MatChild}</Dodecahedron>;
+      case 'helix': return <Helix color={color} shadowProps={{...shadowProps, ...interactionProps}} material={overrideMaterial} />;
+      case 'polyhedron': return <Icosahedron args={[0.6]} {...meshProps}>{MatChild}</Icosahedron>;
+      case 'pentagrammic-prism': return <PentagrammicPrism color={color} shadowProps={{...shadowProps, ...interactionProps}} material={overrideMaterial} />;
+      case 'octagonal-pyramid': return <Cylinder args={[0, 0.5, 1, 8]} {...meshProps}>{MatChild}</Cylinder>;
+      case 'tetrahedron': return <Tetrahedron args={[0.6]} {...meshProps}>{MatChild}</Tetrahedron>;
+      case 'conical-frustum': return <Cylinder args={[0.25, 0.5, 1, 32]} {...meshProps}>{MatChild}</Cylinder>;
+      case 'arch': return <Arch color={color} shadowProps={{...shadowProps, ...interactionProps}} material={overrideMaterial} />;
+      case 'half-pipe': return <HalfPipe color={color} shadowProps={{...shadowProps, ...interactionProps}} material={overrideMaterial} />;
+      default: return <Box args={[1, 1, 1]} {...meshProps}>{MatChild}</Box>;
     }
   };
 

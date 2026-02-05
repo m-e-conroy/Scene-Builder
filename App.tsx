@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { SceneObject, SceneGroup, CloudAsset, TransformMode, BackgroundSettings, PrimitiveType, CameraPreset, StylePreset, BatchConfig, BatchResultItem, ArrayConfig } from './types';
 import AssetPanel from './components/AssetPanel';
@@ -81,6 +80,7 @@ const App: React.FC = () => {
   // Array Tool State
   const [isArrayToolOpen, setIsArrayToolOpen] = useState(false);
   const [arrayPreviewObjects, setArrayPreviewObjects] = useState<SceneObject[]>([]);
+  const [currentArrayConfig, setCurrentArrayConfig] = useState<ArrayConfig | null>(null);
   
   // Modal State
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false);
@@ -102,7 +102,6 @@ const App: React.FC = () => {
     }));
   }, []);
 
-  // ... [Undo, Redo, Copy, Paste, Duplicate logic unchanged - truncated for brevity] ...
   const handleUndo = useCallback(() => {
     if (history.past.length === 0) return;
     const lastState = history.past[history.past.length - 1];
@@ -339,7 +338,7 @@ const App: React.FC = () => {
   // --- Array Tool Logic ---
   
   // Math Helpers for transform
-  const getArrayTransforms = (obj: SceneObject, config: ArrayConfig) => {
+  const getArrayTransforms = (obj: { position: [number, number, number], rotation: [number, number, number], scale: [number, number, number] }, config: ArrayConfig) => {
       const transforms: { pos: THREE.Vector3, rot: THREE.Euler, scl: THREE.Vector3 }[] = [];
       const rng = () => (Math.random() - 0.5) * 2; // -1 to 1
 
@@ -421,89 +420,191 @@ const App: React.FC = () => {
   };
 
   const handleArrayUpdate = useCallback((config: ArrayConfig) => {
+    setCurrentArrayConfig(config);
+    
     if (!selectedId) {
         setArrayPreviewObjects([]);
         return;
     }
 
-    // Determine what to duplicate (single object or group logic)
-    // For simplicity V1: If group selected, duplicate the group structure (complex), 
-    // or just array the selected object. 
-    // Let's support Single Object Array first.
-    
-    let templateObj: SceneObject | undefined;
-    
-    // If group selected, maybe pick the first child as reference? Or warn not supported yet.
-    // Better: If group selected, use group center? Complex.
-    // Let's stick to: Array Tool only available if a SceneObject is selected, or handle Group as "Pivot".
-    
-    // Check if selected is object
-    templateObj = objects.find(o => o.id === selectedId);
-    
-    if (!templateObj) {
-        // Is it a group?
-        const group = groups.find(g => g.id === selectedId);
-        if (group) {
-             // For groups, we would need to clone all children relative to the group pivot.
-             // This requires generating a flattened list of all children for each array step.
-             // V1: Only objects.
-             setArrayPreviewObjects([]); 
-             return;
-        }
-        return;
-    }
+    const group = groups.find(g => g.id === selectedId);
+    const obj = objects.find(o => o.id === selectedId);
+    const target = group || obj;
 
-    const transforms = getArrayTransforms(templateObj, config);
+    if (!target) return;
+
+    const transforms = getArrayTransforms(target, config);
     
-    const ghosts = transforms.map((t, i) => ({
-        ...templateObj!,
-        id: `preview-array-${i}`,
-        name: `${templateObj!.name} (Clone)`,
-        position: [t.pos.x, t.pos.y, t.pos.z] as [number, number, number],
-        rotation: [t.rot.x, t.rot.y, t.rot.z] as [number, number, number],
-        scale: [t.scl.x, t.scl.y, t.scl.z] as [number, number, number],
-        locked: true // Ghost is locked
-    }));
+    const ghosts: SceneObject[] = [];
+
+    if (obj) {
+        transforms.forEach((t, i) => {
+            ghosts.push({
+                ...obj,
+                id: `preview-array-${i}`,
+                name: `${obj.name} (Clone)`,
+                position: [t.pos.x, t.pos.y, t.pos.z],
+                rotation: [t.rot.x, t.rot.y, t.rot.z],
+                scale: [t.scl.x, t.scl.y, t.scl.z],
+                locked: true,
+                groupId: undefined
+            });
+        });
+    } else if (group) {
+        const groupObjects = objects.filter(o => o.groupId === group.id);
+        
+        // Setup Group Matrix
+        const gPos = new THREE.Vector3(...group.position);
+        const gRot = new THREE.Euler(...group.rotation);
+        const gScl = new THREE.Vector3(...group.scale);
+        const groupMatrix = new THREE.Matrix4().compose(gPos, new THREE.Quaternion().setFromEuler(gRot), gScl);
+        const groupMatrixInv = groupMatrix.clone().invert();
+
+        transforms.forEach((t, i) => {
+            // New Group Transform
+            const stepGroupMatrix = new THREE.Matrix4().compose(
+                t.pos, 
+                new THREE.Quaternion().setFromEuler(t.rot), 
+                t.scl
+            );
+
+            groupObjects.forEach((child, j) => {
+                // Calculate Child relative position
+                const cPos = new THREE.Vector3(...child.position);
+                const cRot = new THREE.Euler(...child.rotation);
+                const cScl = new THREE.Vector3(...child.scale);
+                const childMatrix = new THREE.Matrix4().compose(cPos, new THREE.Quaternion().setFromEuler(cRot), cScl);
+
+                const relMatrix = groupMatrixInv.clone().multiply(childMatrix);
+                const newWorldMatrix = stepGroupMatrix.clone().multiply(relMatrix);
+
+                const newPos = new THREE.Vector3();
+                const newQuat = new THREE.Quaternion();
+                const newScl = new THREE.Vector3();
+                newWorldMatrix.decompose(newPos, newQuat, newScl);
+                const newRot = new THREE.Euler().setFromQuaternion(newQuat);
+
+                ghosts.push({
+                    ...child,
+                    id: `preview-array-g${i}-o${j}`,
+                    name: `${child.name} (Clone)`,
+                    position: [newPos.x, newPos.y, newPos.z],
+                    rotation: [newRot.x, newRot.y, newRot.z],
+                    scale: [newScl.x, newScl.y, newScl.z],
+                    locked: true,
+                    groupId: undefined
+                });
+            });
+        });
+    }
     
     setArrayPreviewObjects(ghosts);
 
   }, [objects, groups, selectedId]);
 
   const handleArrayApply = useCallback((asGroup: boolean) => {
-     if (arrayPreviewObjects.length === 0) return;
+     if (!currentArrayConfig || !selectedId) return;
      
      recordHistory(objects, groups);
      
-     const newObjects = arrayPreviewObjects.map((ghost, i) => ({
-         ...ghost,
-         id: generateId() + i, // Real ID
-         locked: false
-     }));
-     
-     let finalObjects = newObjects;
-     let finalGroups = [...groups];
+     const group = groups.find(g => g.id === selectedId);
+     const obj = objects.find(o => o.id === selectedId);
+     const target = group || obj;
+     if (!target) return;
 
-     if (asGroup) {
-         const newGroupId = generateId();
-         const groupObj: SceneGroup = {
-             id: newGroupId,
-             name: "Array Group",
-             isOpen: true,
-             position: [0, 0, 0], // Center is 0,0,0 because objects have world positions
-             rotation: [0, 0, 0],
-             scale: [1, 1, 1]
-         };
-         finalGroups.push(groupObj);
-         finalObjects = newObjects.map(o => ({ ...o, groupId: newGroupId }));
+     const transforms = getArrayTransforms(target, currentArrayConfig);
+     
+     let newObjects: SceneObject[] = [];
+     let newGroups: SceneGroup[] = [...groups];
+
+     if (obj) {
+         transforms.forEach((t, i) => {
+             newObjects.push({
+                 ...obj,
+                 id: generateId(),
+                 name: `${obj.name} (Clone ${i+1})`,
+                 position: [t.pos.x, t.pos.y, t.pos.z],
+                 rotation: [t.rot.x, t.rot.y, t.rot.z],
+                 scale: [t.scl.x, t.scl.y, t.scl.z],
+                 groupId: undefined
+             });
+         });
+
+         if (asGroup) {
+             const newGroupId = generateId();
+             const groupObj: SceneGroup = {
+                 id: newGroupId,
+                 name: `${obj.name} Array`,
+                 isOpen: true,
+                 position: [0,0,0],
+                 rotation: [0,0,0],
+                 scale: [1,1,1]
+             };
+             newGroups.push(groupObj);
+             newObjects = newObjects.map(o => ({ ...o, groupId: newGroupId }));
+         }
+     } else if (group) {
+         const groupObjects = objects.filter(o => o.groupId === group.id);
+         
+         const gPos = new THREE.Vector3(...group.position);
+         const gRot = new THREE.Euler(...group.rotation);
+         const gScl = new THREE.Vector3(...group.scale);
+         const groupMatrix = new THREE.Matrix4().compose(gPos, new THREE.Quaternion().setFromEuler(gRot), gScl);
+         const groupMatrixInv = groupMatrix.clone().invert();
+
+         transforms.forEach((t, i) => {
+             const newGroupId = generateId();
+             const newGroup: SceneGroup = {
+                 id: newGroupId,
+                 name: `${group.name} (Clone ${i+1})`,
+                 isOpen: true,
+                 position: [t.pos.x, t.pos.y, t.pos.z],
+                 rotation: [t.rot.x, t.rot.y, t.rot.z],
+                 scale: [t.scl.x, t.scl.y, t.scl.z]
+             };
+             newGroups.push(newGroup);
+
+             const stepGroupMatrix = new THREE.Matrix4().compose(
+                t.pos, 
+                new THREE.Quaternion().setFromEuler(t.rot), 
+                t.scl
+             );
+
+             groupObjects.forEach((child) => {
+                const cPos = new THREE.Vector3(...child.position);
+                const cRot = new THREE.Euler(...child.rotation);
+                const cScl = new THREE.Vector3(...child.scale);
+                const childMatrix = new THREE.Matrix4().compose(cPos, new THREE.Quaternion().setFromEuler(cRot), cScl);
+                
+                const relMatrix = groupMatrixInv.clone().multiply(childMatrix);
+                const newWorldMatrix = stepGroupMatrix.clone().multiply(relMatrix);
+
+                const newPos = new THREE.Vector3();
+                const newQuat = new THREE.Quaternion();
+                const newScl = new THREE.Vector3();
+                newWorldMatrix.decompose(newPos, newQuat, newScl);
+                const newRot = new THREE.Euler().setFromQuaternion(newQuat);
+
+                newObjects.push({
+                    ...child,
+                    id: generateId(),
+                    name: child.name,
+                    position: [newPos.x, newPos.y, newPos.z],
+                    rotation: [newRot.x, newRot.y, newRot.z],
+                    scale: [newScl.x, newScl.y, newScl.z],
+                    groupId: newGroupId
+                });
+             });
+         });
      }
 
-     setObjects(prev => [...prev, ...finalObjects]);
-     setGroups(finalGroups);
+     setObjects(prev => [...prev, ...newObjects]);
+     setGroups(newGroups);
      
      setArrayPreviewObjects([]);
      setIsArrayToolOpen(false);
      showStatus(`CREATED ${newObjects.length} CLONES`);
-  }, [arrayPreviewObjects, objects, groups, recordHistory]);
+  }, [currentArrayConfig, objects, groups, selectedId, recordHistory]);
 
   const resetProject = useCallback(() => {
     setObjects([]);
@@ -765,11 +866,16 @@ const App: React.FC = () => {
       setIsCapturing(false);
       setSelectedId(currentSelected);
       const result = await processSceneToImage(base64, prompt, strength, objects, groups, lightingReference);
-      setResultImage(result);
-      if (result) setIsPreviewOpen(true);
+      if (result) {
+        setResultImage(result);
+        setIsPreviewOpen(true);
+      } else {
+        showStatus("AI BUSY/QUOTA LIMIT");
+      }
     } catch (err) {
       console.error("Generation failed:", err);
       setIsCapturing(false);
+      showStatus("GENERATION ERROR");
     } finally {
       setIsGenerating(false);
     }
