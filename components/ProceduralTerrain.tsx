@@ -1,7 +1,12 @@
+
 import React, { useMemo, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 import { TerrainData } from '../types';
+
+/** Fix: Define aliases for intrinsic elements to bypass TypeScript's JSX property check errors. */
+const Mesh = 'mesh' as any;
+const MeshStandardMaterial = 'meshStandardMaterial' as any;
 
 interface ProceduralTerrainProps {
   data: TerrainData;
@@ -199,13 +204,13 @@ const ProceduralTerrain: React.FC<ProceduralTerrainProps> = ({
   }, [width, depth, segments, heightScale, method, heightmapData, noiseScale, octaves, persistence, lacunarity, seed, edgeFalloff, falloffDistance, invert, smoothness, showGradient]);
 
   return (
-    <mesh 
+    <Mesh 
       geometry={geometry} 
       rotation={[-Math.PI / 2, 0, 0]} 
       {...shadowProps}
       {...interactionProps}
     >
-      <meshStandardMaterial 
+      <MeshStandardMaterial 
         color={showGradient ? undefined : color} 
         vertexColors={showGradient}
         wireframe={wireframe}
@@ -214,7 +219,7 @@ const ProceduralTerrain: React.FC<ProceduralTerrainProps> = ({
         metalness={0.1}
         side={THREE.DoubleSide}
       />
-    </mesh>
+    </Mesh>
   );
 };
 

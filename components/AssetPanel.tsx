@@ -783,15 +783,6 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                                        <span className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white">Show Height Gradient</span>
                                        <input type="checkbox" checked={selectedObject.terrainData.showGradient} onChange={(e) => updateTerrain(selectedObject.id, { showGradient: e.target.checked })} className="accent-blue-600" />
                                     </label>
-                                    {!selectedObject.terrainData.showGradient && (
-                                       <div className="pt-2">
-                                          <label className="text-[8px] text-gray-500 font-bold uppercase mb-1 block">Solid Color</label>
-                                          <div className="flex gap-2">
-                                             <input type="color" value={selectedObject.color || '#ffffff'} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="w-8 h-8 rounded cursor-pointer bg-transparent border-none" />
-                                             <input type="text" value={selectedObject.color || '#ffffff'} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="flex-1 bg-[#151515] border border-[#333] rounded px-2 text-[10px] text-gray-300 font-mono outline-none focus:border-blue-500" />
-                                          </div>
-                                       </div>
-                                    )}
                                  </div>
                               )}
                            </div>
@@ -833,6 +824,21 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                       />
                     </div>
                   </div>
+
+                  {(selectedObject.type === 'primitive' || (selectedObject.type === 'terrain' && !selectedObject.terrainData?.showGradient)) && (
+                    <div className="space-y-3 pt-4 border-t border-[#222]">
+                      <label className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-2">
+                        <Palette size={12} /> Material Properties
+                      </label>
+                      <div className="bg-[#0a0a0a] border border-[#222] rounded-lg p-3">
+                        <label className="text-[8px] text-gray-500 font-bold uppercase mb-1 block">Base Color</label>
+                        <div className="flex gap-2">
+                          <input type="color" value={selectedObject.color || '#ffffff'} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="w-8 h-8 rounded cursor-pointer bg-transparent border-none" />
+                          <input type="text" value={selectedObject.color || '#ffffff'} onChange={(e) => onUpdate(selectedObject.id, { color: e.target.value })} className="flex-1 bg-[#151515] border border-[#333] rounded px-2 text-[10px] text-gray-300 font-mono outline-none focus:border-blue-500" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* AI Reference Image Section */}
                   <div className="space-y-3 pt-4 border-t border-[#222]">

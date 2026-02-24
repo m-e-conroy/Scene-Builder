@@ -19,10 +19,11 @@ interface AIPanelProps {
   lightingReference: string | null;
   setLightingReference: (url: string | null) => void;
   onOpenBatch: () => void;
-  stylePresets: any[]; // Added prop type
+  stylePresets: any[]; 
   onSaveStylePreset: (name: string) => void;
   onApplyStylePreset: (preset: any) => void;
   onDeleteStylePreset: (id: string) => void;
+  requestConfirm: (title: string, message: string, onConfirm: () => void, confirmLabel?: string, variant?: 'danger' | 'primary') => void;
 }
 
 const TEMPLATES = [
@@ -42,7 +43,7 @@ const KEYWORD_CATEGORIES = {
 
 const AIPanel: React.FC<AIPanelProps> = ({ 
   prompt, setPrompt, strength, setStrength, onGenerate, isGenerating, resultImage, onOpenPreview,
-  lightingReference, setLightingReference, onOpenBatch
+  lightingReference, setLightingReference, onOpenBatch, requestConfirm
 }) => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [activeKeywordTab, setActiveKeywordTab] = useState<keyof typeof KEYWORD_CATEGORIES>('Lighting');
@@ -61,18 +62,12 @@ const AIPanel: React.FC<AIPanelProps> = ({
 
   const toggleKeyword = (word: string) => {
     if (prompt.includes(word)) {
-      // Remove logic
       let newPrompt = prompt;
-      // 1. Remove ", Word" (middle or end)
       newPrompt = newPrompt.replace(new RegExp(`,\\s*${word}`, 'g'), '');
-      // 2. Remove "Word, " (start)
       newPrompt = newPrompt.replace(new RegExp(`^${word}\\s*,\\s*`, 'g'), '');
-      // 3. Remove "Word" (standalone or leftover)
       newPrompt = newPrompt.replace(new RegExp(word, 'g'), '');
-      
       setPrompt(newPrompt.trim());
     } else {
-      // Add logic
       const separator = prompt.trim().length > 0 && !prompt.trim().endsWith(',') ? ', ' : '';
       setPrompt(`${prompt.trim()}${separator}${word}`);
     }
@@ -80,9 +75,13 @@ const AIPanel: React.FC<AIPanelProps> = ({
 
   const applyTemplate = (templatePrompt: string) => {
     if (prompt.trim().length > 0) {
-      if (window.confirm("Replace current prompt with template?")) {
-        setPrompt(templatePrompt);
-      }
+      requestConfirm(
+        "Replace Prompt",
+        "Your current prompt will be overwritten by this template. Are you sure you want to proceed?",
+        () => setPrompt(templatePrompt),
+        "Replace Prompt",
+        "primary"
+      );
     } else {
       setPrompt(templatePrompt);
     }
@@ -110,8 +109,6 @@ const AIPanel: React.FC<AIPanelProps> = ({
         </h2>
         
         <div className="space-y-4">
-          
-          {/* Prompt Section */}
           <div className="space-y-2">
              <div className="flex items-center justify-between">
                 <label className="text-[10px] text-gray-500 uppercase font-bold">Creative Prompt</label>
@@ -160,7 +157,6 @@ const AIPanel: React.FC<AIPanelProps> = ({
                   className="w-full h-24 bg-[#0a0a0a] border border-[#222] rounded-t-md p-3 text-xs text-white focus:outline-none focus:border-blue-500 resize-none leading-relaxed transition-colors scrollbar-hide"
                 />
                 
-                {/* Keyword Inspector */}
                 <div className="bg-[#151515] border-x border-b border-[#222] rounded-b-md p-2">
                    <div className="flex gap-1 mb-2 border-b border-[#333] pb-1">
                       {(Object.keys(KEYWORD_CATEGORIES) as Array<keyof typeof KEYWORD_CATEGORIES>).map(cat => (
@@ -204,7 +200,6 @@ const AIPanel: React.FC<AIPanelProps> = ({
              </div>
           </div>
 
-          {/* Lighting Reference */}
           <div>
             <label className="block text-[10px] text-gray-500 uppercase font-bold mb-2 flex justify-between items-center">
               <span className="flex items-center gap-1"><Sun size={10} /> Lighting Reference</span>
@@ -217,7 +212,7 @@ const AIPanel: React.FC<AIPanelProps> = ({
               {lightingReference ? (
                 <>
                   <img src={lightingReference} alt="Light Ref" className="w-full h-full object-cover opacity-60" />
-                  <div className="absolute inset-0 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60">
+                  <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
                      <button 
                         onClick={() => setLightingReference(null)} 
                         className="p-1.5 bg-red-600 rounded text-white hover:bg-red-500"
@@ -237,7 +232,6 @@ const AIPanel: React.FC<AIPanelProps> = ({
             </div>
           </div>
 
-          {/* Strength Slider */}
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
