@@ -54,9 +54,11 @@ const App: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [bgSettings, setBgSettings] = useState<BackgroundSettings>({ url: null, position: [0, 0, -5], scale: 10, opacity: 1 });
   const [prompt, setPrompt] = useState('');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash-image');
   const [strength, setStrength] = useState(0.5);
   const [lightingReference, setLightingReference] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -360,6 +362,7 @@ const App: React.FC = () => {
   const handleGenerate = async () => {
     if (!canvasRef.current) return;
     setIsGenerating(true);
+    setRenderError(null);
     setIsCapturing(true);
     const originalSelectedId = selectedId;
     setSelectedId(null);
@@ -367,9 +370,22 @@ const App: React.FC = () => {
       await new Promise(r => setTimeout(r, 400));
       const base64 = canvasRef.current.toDataURL('image/png', 1.0);
       setSourceImage(base64);
-      const result = await processSceneToImage(base64, prompt, strength, objects, groups, currentCameraState.pos, currentCameraState.target, lightingReference);
-      if (result) { setResultImage(result); setIsPreviewOpen(true); } else showStatus("RENDER FAILED");
-    } catch (err) { showStatus("GEN ERROR"); } finally { setIsCapturing(false); setSelectedId(originalSelectedId); setIsGenerating(false); }
+      const result = await processSceneToImage(base64, prompt, strength, objects, groups, currentCameraState.pos, currentCameraState.target, lightingReference, selectedModel);
+      if (result) { 
+        setResultImage(result); 
+        setIsPreviewOpen(true); 
+      } else {
+        setRenderError("Failed to generate image from Gemini response.");
+        showStatus("RENDER FAILED");
+      }
+    } catch (err: any) { 
+      setRenderError(err?.message || "Generation error occurred.");
+      showStatus("GEN ERROR"); 
+    } finally { 
+      setIsCapturing(false); 
+      setSelectedId(originalSelectedId); 
+      setIsGenerating(false); 
+    }
   };
 
   const handleBatchGenerate = async (config: BatchConfig) => {
@@ -421,7 +437,8 @@ const App: React.FC = () => {
             groups, 
             currentCameraState.pos, 
             currentCameraState.target, 
-            lightingReference
+            lightingReference,
+            selectedModel
           );
           if (res) {
             results.push({
@@ -495,7 +512,7 @@ const App: React.FC = () => {
           snapSize={snapSize} setSnapSize={setSnapSize} objects={objects} groups={groups} onRemove={handleRemove} onRemoveGroup={handleRemoveGroup} selectedId={selectedId} onSelect={setSelectedId} onUpdate={handleUpdate} onUpdateGroup={handleUpdateGroup} onAddGroup={() => setGroups(p => [...p, { id: generateId(), name: "NEW GROUP", isOpen: true, position:[0,0,0], rotation:[0,0,0], scale:[1,1,1] }])} onDuplicate={handleDuplicate} cameraPresets={cameraPresets} onSavePreset={handleSaveCameraPreset} onLoadPreset={onLoadPreset} onDeletePreset={onDeletePreset} onOpenArrayTool={() => { if (selectedId) setIsArrayToolOpen(true); else showStatus("SELECT AN OBJECT FIRST"); }}
         />
         <Viewport objects={objects} groups={groups} selectedId={selectedId} onSelect={setSelectedId} onRemove={handleRemove} transformMode={transformMode} onUpdate={handleUpdate} onUpdateGroup={handleUpdateGroup} onUpdateMany={handleUpdateMany} canvasRef={canvasRef} snapEnabled={snapEnabled} snapSize={snapSize} bgSettings={bgSettings} activeCameraPreset={activeCameraPreset} onCameraPresetProcessed={() => setActiveCameraPreset(null)} onSetCapturedView={(pos, target) => setCurrentCameraState({ pos, target })} previewObjects={arrayPreviewObjects} isCapturing={isCapturing} />
-        <AIPanel prompt={prompt} setPrompt={setPrompt} strength={strength} setStrength={setStrength} onGenerate={handleGenerate} isGenerating={isGenerating} resultImage={resultImage} onOpenPreview={() => setIsPreviewOpen(true)} lightingReference={lightingReference} setLightingReference={setLightingReference} onOpenBatch={() => setIsBatchDialogOpen(true)} stylePresets={stylePresets} onSaveStylePreset={() => {}} onApplyStylePreset={handleApplyStylePreset} onDeleteStylePreset={() => {}} requestConfirm={requestConfirm} />
+        <AIPanel prompt={prompt} setPrompt={setPrompt} strength={strength} setStrength={setStrength} onGenerate={handleGenerate} isGenerating={isGenerating} renderError={renderError} setRenderError={setRenderError} resultImage={resultImage} onOpenPreview={() => setIsPreviewOpen(true)} lightingReference={lightingReference} setLightingReference={setLightingReference} onOpenBatch={() => setIsBatchDialogOpen(true)} stylePresets={stylePresets} onSaveStylePreset={() => {}} onApplyStylePreset={handleApplyStylePreset} onDeleteStylePreset={() => {}} requestConfirm={requestConfirm} selectedModel={selectedModel} onSelectModel={setSelectedModel} />
         {isArrayToolOpen && <ArrayToolDialog onClose={() => { setIsArrayToolOpen(false); setArrayPreviewObjects([]); }} onUpdate={handleArrayUpdate} onApply={handleArrayApply} />}
       </main>
       {isPreviewOpen && resultImage && <PreviewOverlay sourceImage={sourceImage} resultImage={resultImage} prompt={prompt} strength={strength} onClose={() => setIsPreviewOpen(false)} onSetAsBackdrop={() => { setBgSettings(prev => ({ ...prev, url: resultImage })); setIsPreviewOpen(false); }} />}

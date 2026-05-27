@@ -14,6 +14,8 @@ interface AIPanelProps {
   setStrength: (s: number) => void;
   onGenerate: () => void;
   isGenerating: boolean;
+  renderError: string | null;
+  setRenderError: (err: string | null) => void;
   resultImage: string | null;
   onOpenPreview: () => void;
   lightingReference: string | null;
@@ -24,6 +26,8 @@ interface AIPanelProps {
   onApplyStylePreset: (preset: any) => void;
   onDeleteStylePreset: (id: string) => void;
   requestConfirm: (title: string, message: string, onConfirm: () => void, confirmLabel?: string, variant?: 'danger' | 'primary') => void;
+  selectedModel: string;
+  onSelectModel: (m: string) => void;
 }
 
 const TEMPLATES = [
@@ -42,8 +46,10 @@ const KEYWORD_CATEGORIES = {
 };
 
 const AIPanel: React.FC<AIPanelProps> = ({ 
-  prompt, setPrompt, strength, setStrength, onGenerate, isGenerating, resultImage, onOpenPreview,
-  lightingReference, setLightingReference, onOpenBatch, requestConfirm
+  prompt, setPrompt, strength, setStrength, onGenerate, isGenerating, 
+  renderError, setRenderError, resultImage, onOpenPreview,
+  lightingReference, setLightingReference, onOpenBatch, requestConfirm,
+  selectedModel, onSelectModel
 }) => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [activeKeywordTab, setActiveKeywordTab] = useState<keyof typeof KEYWORD_CATEGORIES>('Lighting');
@@ -107,8 +113,42 @@ const AIPanel: React.FC<AIPanelProps> = ({
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4 flex items-center justify-between">
           <span className="flex items-center gap-2"><Sparkles size={14} className="text-blue-400" /> Neural Renderer</span>
         </h2>
+
+        {renderError && (
+          <div className="mb-4 bg-red-950/50 border border-red-500/40 rounded-lg p-3 text-red-200 text-[11px] leading-relaxed flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex justify-between items-center">
+              <span className="font-bold uppercase tracking-wider text-red-400 text-[9px]">ENGINE ERROR</span>
+              <button onClick={() => setRenderError(null)} className="text-red-400 hover:text-red-200 transition-colors p-0.5 rounded hover:bg-white/5">
+                <X size={12} />
+              </button>
+            </div>
+            <div className="font-mono bg-black/40 p-2 rounded border border-white/5 break-words text-[10px] text-red-300">
+              {renderError}
+            </div>
+            {renderError.toLowerCase().includes("quota") && (
+              <div className="text-[#8e8e93] text-[9px] leading-normal pt-1 border-t border-white/5">
+                Tip: Gemini Free Tier has strict rate limits. Please wait 10-30 seconds before retrying, or verify your API configuration.
+              </div>
+            )}
+          </div>
+        )}
         
         <div className="space-y-4">
+          <div className="space-y-1.5 bg-black/40 border border-white/5 rounded-md p-2">
+             <label className="text-[9px] text-[#8e8e93] uppercase font-black tracking-wider flex items-center gap-1.5">
+               <BrainCircuit size={11} className="text-blue-400" /> Image Synthesis Engine
+             </label>
+             <select
+               value={selectedModel}
+               onChange={(e) => onSelectModel(e.target.value)}
+               className="w-full bg-[#18181b] border border-white/10 rounded px-2 py-1 text-[11px] font-bold text-gray-200 outline-none focus:border-blue-500 cursor-pointer transition-all"
+             >
+               <option value="gemini-2.5-flash-image">⚡ Gemini 2.5 Flash</option>
+               <option value="gemini-3.1-flash-image-preview">🍌 Gemini 3.1 Flash (Nano Banana 2)</option>
+               <option value="gemini-3-pro-image-preview">🔥 Gemini 3 Pro (Ultra Quality)</option>
+             </select>
+          </div>
+
           <div className="space-y-2">
              <div className="flex items-center justify-between">
                 <label className="text-[10px] text-gray-500 uppercase font-bold">Creative Prompt</label>

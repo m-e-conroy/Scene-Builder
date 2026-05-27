@@ -41,6 +41,55 @@ const Mesh = 'mesh' as any;
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.5/');
 
+// Memory-efficient GLTF model caching to avoid redundant fetching and parsing
+const gltfCache = new Map<string, Promise<THREE.Group>>();
+
+const getCachedModel = (url: string): Promise<THREE.Group> => {
+  if (gltfCache.has(url)) {
+    return gltfCache.get(url)!;
+  }
+  const promise = new Promise<THREE.Group>((resolve, reject) => {
+    const loader = new GLTFLoader();
+    loader.setDRACOLoader(dracoLoader);
+    loader.load(
+      url,
+      (gltf) => resolve(gltf.scene),
+      undefined,
+      (err) => reject(err)
+    );
+  });
+  gltfCache.set(url, promise);
+  return promise;
+};
+
+// High-performance real-time Framerate Counter component (no React re-renders)
+const FPSCounter: React.FC<{ domRef: React.RefObject<HTMLSpanElement | null> }> = ({ domRef }) => {
+  const lastTime = useRef(performance.now());
+  const frames = useRef(0);
+
+  useFrame(() => {
+    frames.current++;
+    const now = performance.now();
+    if (now >= lastTime.current + 500) {
+      const fps = Math.round((frames.current * 1000) / (now - lastTime.current));
+      if (domRef.current) {
+        domRef.current.innerText = `${fps} FPS`;
+        if (fps >= 50) {
+          domRef.current.className = "text-[11px] font-mono font-bold text-emerald-400";
+        } else if (fps >= 30) {
+          domRef.current.className = "text-[11px] font-mono font-bold text-amber-400";
+        } else {
+          domRef.current.className = "text-[11px] font-mono font-bold text-rose-500 animate-pulse";
+        }
+      }
+      frames.current = 0;
+      lastTime.current = now;
+    }
+  });
+
+  return null;
+};
+
 // --- Custom Geometry Components ---
 
 const Wedge: React.FC<{ color: string, meshProps: any }> = ({ color, meshProps }) => {
@@ -235,17 +284,18 @@ const Model: React.FC<{
 
     useEffect(() => {
         if (obj.type === 'primitive' || obj.type === 'terrain') { setLoading(false); return; }
+        if (!obj.url) { setLoading(false); return; }
         setLoadedScene(null);
         setLoading(true);
-        const loader = new GLTFLoader();
-        loader.setDRACOLoader(dracoLoader);
-        loader.load(obj.url, (result) => {
-            setLoadedScene(result.scene);
-            setLoading(false);
-        }, undefined, (err) => {
-            console.error("Error loading model:", err);
-            setLoading(false);
-        });
+        getCachedModel(obj.url)
+            .then((scene) => {
+                setLoadedScene(scene);
+                setLoading(false);
+            })
+            .catch((err) => {
+                console.error("Error loading model:", err);
+                setLoading(false);
+            });
     }, [obj.url, obj.type]);
 
     useEffect(() => { 
@@ -298,6 +348,14 @@ const Viewport: React.FC<ViewportProps> = ({
   const modelRefs = useRef<Map<string, THREE.Object3D>>(new Map());
   const orbitControlsRef = useRef<any>(null);
   const [activeTarget, setActiveTarget] = useState<THREE.Object3D | null>(null);
+
+  const fpsDomRef = useRef<HTMLSpanElement>(null);
+
+  const primitiveCount = useMemo(() => objects.filter(o => o.type === 'primitive').length, [objects]);
+  const terrainCount = useMemo(() => objects.filter(o => o.type === 'terrain').length, [objects]);
+  const modelCount = useMemo(() => objects.filter(o => o.type === 'cloud' || o.type === 'local').length, [objects]);
+  const totalCount = objects.length;
+  const groupCount = groups.length;
 
   const registerModelRef = useCallback((id: string, ref: THREE.Object3D | null) => { 
     if (ref) { 
@@ -433,6 +491,7 @@ const Viewport: React.FC<ViewportProps> = ({
           <Environment preset="city" />
           <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={20} blur={2.4} far={4.5} />
           <CameraManager activePreset={activeCameraPreset} onPresetProcessed={onCameraPresetProcessed} controlsRef={orbitControlsRef} />
+          {!isCapturing && <FPSCounter domRef={fpsDomRef} />}
         </Suspense>
         <OrbitControls 
             ref={orbitControlsRef} 
@@ -443,6 +502,57 @@ const Viewport: React.FC<ViewportProps> = ({
         />
         {!isCapturing && <Grid infiniteGrid fadeDistance={30} cellSize={snapSize} sectionSize={snapSize * 5} sectionThickness={1.5} sectionColor="#333" cellColor="#222" />}
       </Canvas>
+
+      {/* Floating System Statistics & Performance Monitor Overlay */}
+      {!isCapturing && (
+        <div id="performance-monitor" className="absolute top-4 right-4 z-10 bg-[#0c0c0e]/90 backdrop-blur-md border border-white/10 rounded-lg p-3 min-w-[170px] pointer-events-none select-none shadow-2xl flex flex-col gap-1.5 font-sans">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-[9px] text-[#88888c] font-bold uppercase tracking-wider">ENGINE METRICS</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-[8px] text-emerald-400 font-mono font-bold uppercase tracking-widest">Active</span>
+            </div>
+          </div>
+          
+          <div className="flex items-baseline justify-between mt-1">
+            <span className="text-[10px] text-gray-400 font-medium font-sans">Framerate</span>
+            <span ref={fpsDomRef} className="text-xs font-mono font-bold text-emerald-400">-- FPS</span>
+          </div>
+
+          <div className="h-px bg-white/5 my-0.5"></div>
+
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-gray-400 font-medium">Total Objects</span>
+            <span className="font-mono font-bold text-sky-400">{totalCount}</span>
+          </div>
+
+          <div className="flex flex-col gap-0.5 pl-2 border-l border-white/5 mt-0.5 text-[9px] text-[#8c8c93]">
+            <div className="flex justify-between">
+              <span>Primitives</span>
+              <span className="font-mono font-medium">{primitiveCount}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Terrains</span>
+              <span className="font-mono font-medium">{terrainCount}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>GLTF Models</span>
+              <span className="font-mono font-medium">{modelCount}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Groups</span>
+              <span className="font-mono font-medium">{groupCount}</span>
+            </div>
+          </div>
+
+          <div className="h-px bg-white/5 my-0.5"></div>
+
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-gray-400 font-medium">Grid Snap</span>
+            <span className="font-mono font-bold text-amber-500">{snapEnabled ? `${snapSize}m` : 'OFF'}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -746,7 +746,7 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                                           <div className="flex items-center justify-between pt-2">
                                              <button onClick={() => updateTerrain(selectedObject.id, { seed: Math.random() })} className="px-3 py-1 bg-[#222] hover:bg-[#333] rounded text-[9px] text-gray-300 font-bold uppercase flex items-center gap-1"><RefreshCw size={10} /> Randomize Seed</button>
                                              <label className="flex items-center gap-2 text-[9px] text-gray-400 font-bold uppercase cursor-pointer">
-                                                <input type="checkbox" checked={selectedObject.terrainData.invert} onChange={(e) => updateTerrain(selectedObject.id, { invert: e.target.checked })} /> Invert
+                                                <input type="checkbox" checked={!!selectedObject.terrainData.invert} onChange={(e) => updateTerrain(selectedObject.id, { invert: e.target.checked })} /> Invert
                                              </label>
                                           </div>
                                        </>
@@ -777,11 +777,11 @@ const AssetPanel: React.FC<AssetPanelProps> = ({
                                  <div className="space-y-3">
                                     <label className="flex items-center justify-between p-2 bg-[#151515] rounded cursor-pointer group">
                                        <span className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white">Wireframe Mode</span>
-                                       <input type="checkbox" checked={selectedObject.terrainData.wireframe} onChange={(e) => updateTerrain(selectedObject.id, { wireframe: e.target.checked })} className="accent-blue-600" />
+                                       <input type="checkbox" checked={!!selectedObject.terrainData.wireframe} onChange={(e) => updateTerrain(selectedObject.id, { wireframe: e.target.checked })} className="accent-blue-600" />
                                     </label>
                                     <label className="flex items-center justify-between p-2 bg-[#151515] rounded cursor-pointer group">
                                        <span className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white">Show Height Gradient</span>
-                                       <input type="checkbox" checked={selectedObject.terrainData.showGradient} onChange={(e) => updateTerrain(selectedObject.id, { showGradient: e.target.checked })} className="accent-blue-600" />
+                                       <input type="checkbox" checked={!!selectedObject.terrainData.showGradient} onChange={(e) => updateTerrain(selectedObject.id, { showGradient: e.target.checked })} className="accent-blue-600" />
                                     </label>
                                  </div>
                               )}
