@@ -3,9 +3,36 @@ import React, { useState } from 'react';
 import { 
   Sparkles, Sliders, Image as ImageIcon, Loader2, Info, Maximize2, 
   Sun, Trash2, Upload, Wand2, Plus, Check, Lightbulb, Camera, 
-  Zap, Palette, Tag, BrainCircuit, X, Layers
+  Zap, Palette, Tag, BrainCircuit, X, Layers, Settings, Key
 } from 'lucide-react';
 import { enhancePrompt } from '../services/geminiService';
+import { GeminiModelOption, ImageResolution, ImageAspectRatio } from '../types';
+
+export const GEMINI_IMAGE_MODELS: GeminiModelOption[] = [
+  {
+    id: 'gemini-3.1-flash-lite-image',
+    label: 'Gemini 3.1 Flash Lite',
+    badge: '⚡ Fast / Interactive',
+    description: 'Ultra-fast image generation and editing with lowest latency. Ideal for real-time iterative blocking.',
+    supportsResolution: false,
+  },
+  {
+    id: 'gemini-nano-banana-2.1',
+    label: 'Gemini Nano Banana 2.1',
+    badge: '🍌 High-Fidelity (1K–4K)',
+    description: 'Advanced structural adherence, richer texture generation, and configurable high resolutions.',
+    supportsResolution: true,
+    recommendedResolution: '1K',
+  },
+  {
+    id: 'gemini-3-pro-image',
+    label: 'Gemini 3 Pro Image',
+    badge: '🔥 Studio Quality (1K–4K)',
+    description: 'Flagship image synthesis for complex scenes, professional cinematic lighting, and studio-grade materials.',
+    supportsResolution: true,
+    recommendedResolution: '2K',
+  },
+];
 
 interface AIPanelProps {
   prompt: string;
@@ -28,6 +55,12 @@ interface AIPanelProps {
   requestConfirm: (title: string, message: string, onConfirm: () => void, confirmLabel?: string, variant?: 'danger' | 'primary') => void;
   selectedModel: string;
   onSelectModel: (m: string) => void;
+  selectedResolution?: ImageResolution;
+  onSelectResolution?: (res: ImageResolution) => void;
+  selectedAspectRatio?: ImageAspectRatio;
+  onSelectAspectRatio?: (ratio: ImageAspectRatio) => void;
+  hasCustomKey: boolean;
+  onOpenSettings: () => void;
 }
 
 const TEMPLATES = [
@@ -49,7 +82,10 @@ const AIPanel: React.FC<AIPanelProps> = ({
   prompt, setPrompt, strength, setStrength, onGenerate, isGenerating, 
   renderError, setRenderError, resultImage, onOpenPreview,
   lightingReference, setLightingReference, onOpenBatch, requestConfirm,
-  selectedModel, onSelectModel
+  selectedModel, onSelectModel,
+  selectedResolution = '1K', onSelectResolution,
+  selectedAspectRatio = '1:1', onSelectAspectRatio,
+  hasCustomKey, onOpenSettings
 }) => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [activeKeywordTab, setActiveKeywordTab] = useState<keyof typeof KEYWORD_CATEGORIES>('Lighting');
@@ -107,11 +143,27 @@ const AIPanel: React.FC<AIPanelProps> = ({
     }
   };
 
+  // Find active model metadata
+  const currentModelMeta = GEMINI_IMAGE_MODELS.find(m => m.id === selectedModel) || GEMINI_IMAGE_MODELS[0];
+
   return (
     <div className="w-80 h-full bg-[#111] border-l border-[#222] flex flex-col pointer-events-auto overflow-y-auto custom-scrollbar">
       <div className="p-4 border-b border-[#222] bg-[#111] sticky top-0 z-10">
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4 flex items-center justify-between">
           <span className="flex items-center gap-2"><Sparkles size={14} className="text-blue-400" /> Neural Renderer</span>
+          <button 
+            type="button"
+            onClick={onOpenSettings}
+            className={`p-1.5 rounded transition-all cursor-pointer flex items-center gap-1 ${
+              hasCustomKey 
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 shadow-sm' 
+                : 'bg-zinc-805 text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+            title={hasCustomKey ? "Active Private Key (Click to Edit)" : "Configure Private API Key"}
+          >
+            {hasCustomKey ? <Key size={11} className="text-emerald-400 animate-pulse" /> : <Settings size={11} />}
+            <span className="text-[8px] font-extrabold uppercase tracking-tight">{hasCustomKey ? "Custom Key Active" : "Use Private Key"}</span>
+          </button>
         </h2>
 
         {renderError && (
@@ -134,19 +186,87 @@ const AIPanel: React.FC<AIPanelProps> = ({
         )}
         
         <div className="space-y-4">
-          <div className="space-y-1.5 bg-black/40 border border-white/5 rounded-md p-2">
-             <label className="text-[9px] text-[#8e8e93] uppercase font-black tracking-wider flex items-center gap-1.5">
-               <BrainCircuit size={11} className="text-blue-400" /> Image Synthesis Engine
-             </label>
+          {/* Image Synthesis Engine & Advanced Controls */}
+          <div className="space-y-2 bg-[#141416] border border-white/10 rounded-lg p-2.5 shadow-sm">
+             <div className="flex items-center justify-between">
+               <label className="text-[9px] text-[#8e8e93] uppercase font-black tracking-wider flex items-center gap-1.5">
+                 <BrainCircuit size={11} className="text-blue-400" /> Image Synthesis Engine
+               </label>
+               <span className="text-[8px] font-mono text-blue-400 font-semibold px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
+                 Gemini
+               </span>
+             </div>
+
              <select
                value={selectedModel}
                onChange={(e) => onSelectModel(e.target.value)}
-               className="w-full bg-[#18181b] border border-white/10 rounded px-2 py-1 text-[11px] font-bold text-gray-200 outline-none focus:border-blue-500 cursor-pointer transition-all"
+               className="w-full bg-[#1c1c20] border border-white/15 rounded-md px-2.5 py-1.5 text-[11px] font-bold text-gray-100 outline-none focus:border-blue-500 cursor-pointer transition-all hover:border-white/25"
              >
-               <option value="gemini-2.5-flash-image">⚡ Gemini 2.5 Flash</option>
-               <option value="gemini-3.1-flash-image-preview">🍌 Gemini 3.1 Flash (Nano Banana 2)</option>
-               <option value="gemini-3-pro-image-preview">🔥 Gemini 3 Pro (Ultra Quality)</option>
+               {GEMINI_IMAGE_MODELS.map((m) => (
+                 <option key={m.id} value={m.id}>
+                   {m.label} ({m.badge})
+                 </option>
+               ))}
              </select>
+
+             {/* Selected Model Description */}
+             <p className="text-[9px] text-zinc-400 leading-tight px-0.5">
+               {currentModelMeta.description}
+             </p>
+
+             {/* Resolution selector (for models supporting 1K, 2K, 4K) */}
+             {currentModelMeta.supportsResolution && (
+               <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                 <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                   <Layers size={9} className="text-purple-400" /> Resolution
+                 </span>
+                 <div className="flex items-center gap-1">
+                   {(['1K', '2K', '4K'] as ImageResolution[]).map((res) => {
+                     const isSelected = selectedResolution === res;
+                     return (
+                       <button
+                         key={res}
+                         type="button"
+                         onClick={() => onSelectResolution?.(res)}
+                         className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold transition-all cursor-pointer ${
+                           isSelected
+                             ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/30'
+                             : 'bg-black/40 text-zinc-400 hover:text-white hover:bg-white/5 border border-white/5'
+                         }`}
+                       >
+                         {res}
+                       </button>
+                     );
+                   })}
+                 </div>
+               </div>
+             )}
+
+             {/* Aspect Ratio selector */}
+             <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+               <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                 <Maximize2 size={9} className="text-blue-400" /> Aspect Ratio
+               </span>
+               <div className="flex items-center gap-1">
+                 {(['1:1', '16:9', '9:16', '4:3'] as ImageAspectRatio[]).map((ratio) => {
+                   const isSelected = selectedAspectRatio === ratio;
+                   return (
+                     <button
+                       key={ratio}
+                       type="button"
+                       onClick={() => onSelectAspectRatio?.(ratio)}
+                       className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold transition-all cursor-pointer ${
+                         isSelected
+                           ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                           : 'bg-black/40 text-zinc-400 hover:text-white hover:bg-white/5 border border-white/5'
+                       }`}
+                     >
+                       {ratio}
+                     </button>
+                   );
+                 })}
+               </div>
+             </div>
           </div>
 
           <div className="space-y-2">

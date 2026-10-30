@@ -3,16 +3,34 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Initialize Gemini Client with server-side API Key
-const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-const ai = new GoogleGenAI({
-  apiKey: apiKey,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
+// Helper to instantiate GoogleGenAI dynamically per request to support client-provided private API keys
+const getAIClient = (req: express.Request): GoogleGenAI | null => {
+  const headerKey = req.headers['x-gemini-api-key'] as string | undefined;
+  if (headerKey && headerKey.trim()) {
+    return new GoogleGenAI({
+      apiKey: headerKey.trim(),
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
   }
-});
+
+  const serverKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  if (serverKey) {
+    return new GoogleGenAI({
+      apiKey: serverKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+  }
+
+  return null;
+};
 
 async function startServer() {
   const app = express();
@@ -41,11 +59,22 @@ async function startServer() {
         cameraPos,
         cameraTarget,
         lightingReferenceUrl,
-        model = 'gemini-2.5-flash-image'
+        model = 'gemini-3.1-flash-lite-image',
+        aspectRatio = '1:1',
+        imageSize = '1K'
       } = req.body;
 
-      if (!apiKey) {
-        return res.status(500).json({ error: "Gemini API Key is not configured on the server." });
+      const ai = getAIClient(req);
+      if (!ai) {
+        return res.status(401).json({ error: "Gemini API Key is not configured. Please set the server API key or configure a private key in the application settings." });
+      }
+
+      // Map any legacy names to current official @google/genai image models
+      let activeModel = model;
+      if (activeModel === 'gemini-2.5-flash-image' || activeModel === 'gemini-3.1-flash-image-preview') {
+        activeModel = 'gemini-3.1-flash-lite-image';
+      } else if (activeModel === 'gemini-3-pro-image-preview') {
+        activeModel = 'gemini-3-pro-image';
       }
 
       const objectsWithRefs = objects.filter((o: any) => o.referenceImageUrl);
@@ -140,21 +169,30 @@ async function startServer() {
 
       parts.push({ text: masterPrompt });
 
-      // Use dynamic model with a fallback
+      // Configure image generation options
+      const imageConfig: Record<string, string> = {
+        aspectRatio: aspectRatio || "1:1"
+      };
+
+      // imageSize (1K, 2K, 4K) is supported on gemini-nano-banana-2.1 and gemini-3-pro-image
+      if ((activeModel === 'gemini-nano-banana-2.1' || activeModel === 'gemini-3-pro-image') && imageSize) {
+        imageConfig.imageSize = imageSize;
+      }
+
+      // Generate rendered image with the selected Gemini model
       const response = await ai.models.generateContent({
-        model: model,
+        model: activeModel,
         contents: { parts },
         config: {
-          imageConfig: {
-            aspectRatio: "1:1"
-          }
+          imageConfig
         }
       });
 
       if (response.candidates && response.candidates[0].content?.parts) {
         for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            return res.json({ result: `data:image/png;base64,${part.inlineData.data}` });
+          if (part.inlineData?.data) {
+            const mime = part.inlineData.mimeType || 'image/png';
+            return res.json({ result: `data:${mime};base64,${part.inlineData.data}` });
           }
         }
       }
@@ -173,13 +211,14 @@ async function startServer() {
         return res.json({ refined: "" });
       }
 
-      if (!apiKey) {
-        return res.status(500).json({ error: "Gemini API Key is not configured on the server." });
+      const ai = getAIClient(req);
+      if (!ai) {
+        return res.status(401).json({ error: "Gemini API Key is not configured. Please set the server API key or configure a private key in the application settings." });
       }
 
-      // Use recommended model 'gemini-3.5-flash' for basic text tasks
+      // Use standard model 'gemini-3.8-flash' for basic text tasks
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: 'gemini-3.8-flash',
         contents: `Transform this 3D scene description into a high-end, professional rendering prompt for PBR materials and global illumination. Max 35 words. Prompt: "${currentPrompt}"`,
       });
 
@@ -198,13 +237,14 @@ async function startServer() {
         return res.json({ variations: [basePrompt] });
       }
 
-      if (!apiKey) {
-        return res.status(500).json({ error: "Gemini API Key is not configured on the server." });
+      const ai = getAIClient(req);
+      if (!ai) {
+        return res.status(401).json({ error: "Gemini API Key is not configured. Please set the server API key or configure a private key in the application settings." });
       }
 
-      // Use recommended model 'gemini-3.5-flash' for basic text tasks
+      // Use standard model 'gemini-3.8-flash' for basic text tasks
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: 'gemini-3.8-flash',
         contents: `Create ${count} unique style variations for the prompt: "${basePrompt}". Return as a JSON array of strings.`,
         config: {
           responseMimeType: "application/json",

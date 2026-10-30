@@ -1,5 +1,22 @@
 import { CloudAsset, SceneObject, SceneGroup } from "../types";
 
+const getCustomApiKey = (): string | null => {
+  try {
+    return localStorage.getItem("custom_gemini_api_key");
+  } catch (e) {
+    return null;
+  }
+};
+
+const getHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const customKey = getCustomApiKey();
+  if (customKey) {
+    headers["X-Gemini-API-Key"] = customKey;
+  }
+  return headers;
+};
+
 // Utility to ensure GitHub links are raw and other common URL fixes
 export const sanitizeModelUrl = (url: string): string => {
   let sanitized = url.trim();
@@ -22,12 +39,14 @@ export const processSceneToImage = async (
   cameraPos: [number, number, number],
   cameraTarget: [number, number, number],
   lightingReferenceUrl?: string | null,
-  model?: string
+  model?: string,
+  aspectRatio?: string,
+  imageSize?: string
 ): Promise<string | null> => {
   try {
     const response = await fetch("/api/gemini/process-scene", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify({
         base64Image,
         prompt,
@@ -37,7 +56,9 @@ export const processSceneToImage = async (
         cameraPos,
         cameraTarget,
         lightingReferenceUrl,
-        model
+        model,
+        aspectRatio,
+        imageSize
       })
     });
 
@@ -63,7 +84,7 @@ export const enhancePrompt = async (currentPrompt: string): Promise<string> => {
   try {
     const response = await fetch("/api/gemini/enhance-prompt", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify({ currentPrompt })
     });
 
@@ -85,7 +106,7 @@ export const generatePromptVariations = async (basePrompt: string, count: number
   try {
     const response = await fetch("/api/gemini/prompt-variations", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify({ basePrompt, count })
     });
 

@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { SceneObject, SceneGroup, CloudAsset, TransformMode, BackgroundSettings, PrimitiveType, CameraPreset, StylePreset, BatchConfig, BatchResultItem, ArrayConfig } from './types';
+import { SceneObject, SceneGroup, CloudAsset, TransformMode, BackgroundSettings, PrimitiveType, CameraPreset, StylePreset, BatchConfig, BatchResultItem, ArrayConfig, ImageResolution, ImageAspectRatio } from './types';
 import AssetPanel from './components/AssetPanel';
 import AIPanel from './components/AIPanel';
 import Viewport from './components/Viewport';
@@ -9,6 +9,7 @@ import BatchDialog from './components/BatchDialog';
 import BatchResultViewer from './components/BatchResultViewer';
 import ArrayToolDialog from './components/ArrayToolDialog';
 import ConfirmDialog from './components/ConfirmDialog';
+import SettingsDialog from './components/SettingsDialog';
 import { processSceneToImage, sanitizeModelUrl, generatePromptVariations } from './services/geminiService';
 import { Layers, Move, RotateCw, Maximize, Magnet, Undo2, Redo2, Download, Upload, FilePlus, AlertTriangle, X, Copy, Save } from 'lucide-react';
 import * as THREE from 'three';
@@ -54,7 +55,9 @@ const App: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [bgSettings, setBgSettings] = useState<BackgroundSettings>({ url: null, position: [0, 0, -5], scale: 10, opacity: 1 });
   const [prompt, setPrompt] = useState('');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash-image');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.1-flash-lite-image');
+  const [selectedResolution, setSelectedResolution] = useState<ImageResolution>('1K');
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<ImageAspectRatio>('1:1');
   const [strength, setStrength] = useState(0.5);
   const [lightingReference, setLightingReference] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -70,6 +73,16 @@ const App: React.FC = () => {
   const [isArrayToolOpen, setIsArrayToolOpen] = useState(false);
   const [arrayPreviewObjects, setArrayPreviewObjects] = useState<SceneObject[]>([]);
   const [currentArrayConfig, setCurrentArrayConfig] = useState<ArrayConfig | null>(null);
+
+  // --- Dynamic Private Access Settings ---
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [hasCustomKey, setHasCustomKey] = useState(() => {
+    try {
+      return !!localStorage.getItem('custom_gemini_api_key');
+    } catch (_) {
+      return false;
+    }
+  });
 
   // --- Confirmation Dialog State ---
   const [confirmState, setConfirmState] = useState<{
@@ -135,7 +148,10 @@ const App: React.FC = () => {
       cameraPresets: cameraPresets.filter(p => !p.isSystem),
       stylePresets: stylePresets.filter(p => !p.isSystem),
       prompt,
-      strength
+      strength,
+      selectedModel,
+      selectedResolution,
+      selectedAspectRatio
     };
     const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -145,7 +161,7 @@ const App: React.FC = () => {
     link.click();
     URL.revokeObjectURL(url);
     showStatus("PROJECT SAVED");
-  }, [projectName, objects, groups, bgSettings, cameraPresets, stylePresets, prompt, strength]);
+  }, [projectName, objects, groups, bgSettings, cameraPresets, stylePresets, prompt, strength, selectedModel, selectedResolution, selectedAspectRatio]);
 
   const handleLoadProject = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -163,6 +179,9 @@ const App: React.FC = () => {
         setStylePresets([...DEFAULT_STYLE_PRESETS, ...(data.stylePresets || [])]);
         setPrompt(data.prompt || '');
         setStrength(data.strength || 0.5);
+        if (data.selectedModel) setSelectedModel(data.selectedModel);
+        if (data.selectedResolution) setSelectedResolution(data.selectedResolution);
+        if (data.selectedAspectRatio) setSelectedAspectRatio(data.selectedAspectRatio);
         setSelectedId(null);
         showStatus("PROJECT LOADED");
       } catch (err) {
@@ -370,7 +389,19 @@ const App: React.FC = () => {
       await new Promise(r => setTimeout(r, 400));
       const base64 = canvasRef.current.toDataURL('image/png', 1.0);
       setSourceImage(base64);
-      const result = await processSceneToImage(base64, prompt, strength, objects, groups, currentCameraState.pos, currentCameraState.target, lightingReference, selectedModel);
+      const result = await processSceneToImage(
+        base64, 
+        prompt, 
+        strength, 
+        objects, 
+        groups, 
+        currentCameraState.pos, 
+        currentCameraState.target, 
+        lightingReference, 
+        selectedModel,
+        selectedAspectRatio,
+        selectedResolution
+      );
       if (result) { 
         setResultImage(result); 
         setIsPreviewOpen(true); 
@@ -438,7 +469,9 @@ const App: React.FC = () => {
             currentCameraState.pos, 
             currentCameraState.target, 
             lightingReference,
-            selectedModel
+            selectedModel,
+            selectedAspectRatio,
+            selectedResolution
           );
           if (res) {
             results.push({
@@ -512,7 +545,34 @@ const App: React.FC = () => {
           snapSize={snapSize} setSnapSize={setSnapSize} objects={objects} groups={groups} onRemove={handleRemove} onRemoveGroup={handleRemoveGroup} selectedId={selectedId} onSelect={setSelectedId} onUpdate={handleUpdate} onUpdateGroup={handleUpdateGroup} onAddGroup={() => setGroups(p => [...p, { id: generateId(), name: "NEW GROUP", isOpen: true, position:[0,0,0], rotation:[0,0,0], scale:[1,1,1] }])} onDuplicate={handleDuplicate} cameraPresets={cameraPresets} onSavePreset={handleSaveCameraPreset} onLoadPreset={onLoadPreset} onDeletePreset={onDeletePreset} onOpenArrayTool={() => { if (selectedId) setIsArrayToolOpen(true); else showStatus("SELECT AN OBJECT FIRST"); }}
         />
         <Viewport objects={objects} groups={groups} selectedId={selectedId} onSelect={setSelectedId} onRemove={handleRemove} transformMode={transformMode} onUpdate={handleUpdate} onUpdateGroup={handleUpdateGroup} onUpdateMany={handleUpdateMany} canvasRef={canvasRef} snapEnabled={snapEnabled} snapSize={snapSize} bgSettings={bgSettings} activeCameraPreset={activeCameraPreset} onCameraPresetProcessed={() => setActiveCameraPreset(null)} onSetCapturedView={(pos, target) => setCurrentCameraState({ pos, target })} previewObjects={arrayPreviewObjects} isCapturing={isCapturing} />
-        <AIPanel prompt={prompt} setPrompt={setPrompt} strength={strength} setStrength={setStrength} onGenerate={handleGenerate} isGenerating={isGenerating} renderError={renderError} setRenderError={setRenderError} resultImage={resultImage} onOpenPreview={() => setIsPreviewOpen(true)} lightingReference={lightingReference} setLightingReference={setLightingReference} onOpenBatch={() => setIsBatchDialogOpen(true)} stylePresets={stylePresets} onSaveStylePreset={() => {}} onApplyStylePreset={handleApplyStylePreset} onDeleteStylePreset={() => {}} requestConfirm={requestConfirm} selectedModel={selectedModel} onSelectModel={setSelectedModel} />
+        <AIPanel 
+          prompt={prompt} 
+          setPrompt={setPrompt} 
+          strength={strength} 
+          setStrength={setStrength} 
+          onGenerate={handleGenerate} 
+          isGenerating={isGenerating} 
+          renderError={renderError} 
+          setRenderError={setRenderError} 
+          resultImage={resultImage} 
+          onOpenPreview={() => setIsPreviewOpen(true)} 
+          lightingReference={lightingReference} 
+          setLightingReference={setLightingReference} 
+          onOpenBatch={() => setIsBatchDialogOpen(true)} 
+          stylePresets={stylePresets} 
+          onSaveStylePreset={() => {}} 
+          onApplyStylePreset={handleApplyStylePreset} 
+          onDeleteStylePreset={() => {}} 
+          requestConfirm={requestConfirm} 
+          selectedModel={selectedModel} 
+          onSelectModel={setSelectedModel} 
+          selectedResolution={selectedResolution}
+          onSelectResolution={setSelectedResolution}
+          selectedAspectRatio={selectedAspectRatio}
+          onSelectAspectRatio={setSelectedAspectRatio}
+          hasCustomKey={hasCustomKey} 
+          onOpenSettings={() => setIsSettingsOpen(true)} 
+        />
         {isArrayToolOpen && <ArrayToolDialog onClose={() => { setIsArrayToolOpen(false); setArrayPreviewObjects([]); }} onUpdate={handleArrayUpdate} onApply={handleArrayApply} />}
       </main>
       {isPreviewOpen && resultImage && <PreviewOverlay sourceImage={sourceImage} resultImage={resultImage} prompt={prompt} strength={strength} onClose={() => setIsPreviewOpen(false)} onSetAsBackdrop={() => { setBgSettings(prev => ({ ...prev, url: resultImage })); setIsPreviewOpen(false); }} />}
@@ -553,6 +613,13 @@ const App: React.FC = () => {
         onConfirm={confirmState.onConfirm}
         onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
         variant={confirmState.variant}
+      />
+
+      {/* Private API Settings Dialog */}
+      <SettingsDialog
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onKeyChange={() => setHasCustomKey(!!localStorage.getItem('custom_gemini_api_key'))}
       />
     </div>
   );

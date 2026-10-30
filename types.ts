@@ -158,3 +158,22 @@ export interface ArrayConfig {
   randomRot: [number, number, number];
   randomScale: [number, number, number];
 }
+
+// --- Gemini Image Synthesis Types ---
+
+export type GeminiImageModel = 
+  | 'gemini-3.1-flash-lite-image'
+  | 'gemini-nano-banana-2.1'
+  | 'gemini-3-pro-image';
+
+export type ImageResolution = '1K' | '2K' | '4K';
+export type ImageAspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+
+export interface GeminiModelOption {
+  id: GeminiImageModel;
+  label: string;
+  badge: string;
+  description: string;
+  supportsResolution: boolean;
+  recommendedResolution?: ImageResolution;
+}
